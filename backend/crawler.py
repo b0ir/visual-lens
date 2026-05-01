@@ -1,6 +1,7 @@
 import asyncio
 from playwright.async_api import async_playwright
 import os
+from ai_provider import analyze_ui
 
 AUTH_FILE = "auth.json"
 
@@ -13,23 +14,19 @@ def get_browser_engine(p, browser_type: str):
         return p.chromium
 
 async def launch_interactive_login(url: str):
-    """
-    Launches a visible Chromium browser for the user to log in.
-    """
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False)
         context = await browser.new_context()
         page = await context.new_page()
         await page.goto(url)
         
-        # Wait until the browser is disconnected/closed
         while browser.is_connected():
             await asyncio.sleep(1)
             
         await context.storage_state(path=AUTH_FILE)
         return {"status": "success", "message": "Authentication saved successfully."}
 
-async def _crawl_single_browser(p, start_url: str, browser_type: str):
+async def _crawl_single_browser(p, start_url: str, browser_type: str, ai_model: str, api_keys: dict):
     engine = get_browser_engine(p, browser_type)
     try:
         if os.path.exists(AUTH_FILE):
@@ -46,7 +43,6 @@ async def _crawl_single_browser(p, start_url: str, browser_type: str):
         screenshot_path = f"static/screenshots/home_{browser_type}.png"
         await page.screenshot(path=screenshot_path, full_page=True)
         
-        # Clean the DOM
         cleaned_html = await page.evaluate('''() => {
             const clone = document.documentElement.cloneNode(true);
             const elementsToRemove = clone.querySelectorAll('script, style, svg, path, link, meta, noscript');
@@ -57,11 +53,18 @@ async def _crawl_single_browser(p, start_url: str, browser_type: str):
         await context.close()
         await browser.close()
         
+        # Analyze with AI
+        ai_report = []
+        if ai_model and any(api_keys.values()):
+            # Trim HTML to avoid massive token limits (keep roughly first 15k chars)
+            ai_report = await analyze_ui(screenshot_path, cleaned_html[:15000], ai_model, api_keys)
+        
         return {
             "status": "success",
             "browser": browser_type,
             "screenshot": screenshot_path,
-            "dom_snippet": cleaned_html[:500] 
+            "dom_snippet": cleaned_html[:500],
+            "ai_report": ai_report
         }
     except Exception as e:
         return {
@@ -70,16 +73,13 @@ async def _crawl_single_browser(p, start_url: str, browser_type: str):
             "error": str(e)
         }
 
-async def run_headless_crawler(start_url: str, max_pages: int = 5, target_browser: str = "all"):
-    """
-    Runs the crawler headlessly in selected browsers in parallel.
-    """
+async def run_headless_crawler(start_url: str, max_pages: int, target_browser: str, ai_model: str, api_keys: dict):
     async with async_playwright() as p:
         if target_browser.lower() == "all":
             browsers = ["chromium", "firefox", "webkit"]
         else:
             browsers = [target_browser.lower()]
             
-        tasks = [_crawl_single_browser(p, start_url, b) for b in browsers]
+        tasks = [_crawl_single_browser(p, start_url, b, ai_model, api_keys) for b in browsers]
         results = await asyncio.gather(*tasks)
         return {"status": "success", "results": results}

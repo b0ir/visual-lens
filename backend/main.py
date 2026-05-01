@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import crawler
 import os
+import json
 
 app = FastAPI(title="VisualLens API", description="AI-powered Visual Regression Testing Agent")
 
@@ -25,10 +26,21 @@ class CrawlRequest(BaseModel):
     url: str
     max_pages: int = 5
     target_browser: str = "all"
+    ai_model: str = ""
+    api_keys: dict = {}
 
 @app.get("/")
 def read_root():
     return {"message": "Welcome to VisualLens API"}
+
+@app.get("/api/models")
+def get_models():
+    file_path = os.path.join(os.path.dirname(__file__), "models.json")
+    try:
+        with open(file_path, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
 
 @app.post("/api/auth/start")
 async def start_interactive_auth(req: AuthRequest):
@@ -37,7 +49,7 @@ async def start_interactive_auth(req: AuthRequest):
 
 @app.post("/api/crawl/start")
 async def start_crawl(req: CrawlRequest):
-    result = await crawler.run_headless_crawler(req.url, req.max_pages, req.target_browser)
+    result = await crawler.run_headless_crawler(req.url, req.max_pages, req.target_browser, req.ai_model, req.api_keys)
     return result
 
 if __name__ == "__main__":

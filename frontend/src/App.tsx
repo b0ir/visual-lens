@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Settings, Play, Loader2, Info, X, Sun, Moon } from 'lucide-react'
+import { Settings, Play, Loader2, Info, X, Sun, Moon, Bug, Lightbulb, Code } from 'lucide-react'
 
 function App() {
   const [url, setUrl] = useState('')
@@ -8,19 +8,72 @@ function App() {
   const [statusMessage, setStatusMessage] = useState('')
   const [result, setResult] = useState<any>(null)
   
+  // Settings State
   const [showSettings, setShowSettings] = useState(false)
   const [targetBrowser, setTargetBrowser] = useState('all')
+  
+  // Dynamic Models State
+  const [providerModels, setProviderModels] = useState<Record<string, { id: string, name: string }[]>>({})
+  
+  // AI Settings State
+  const [provider, setProvider] = useState('')
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({ gemini: '', openai: '', anthropic: '', deepseek: '', nvidia: '' })
+  const [aiModel, setAiModel] = useState('')
+  const [isCustomModel, setIsCustomModel] = useState(false)
 
+  // Dark Mode State
   const [isDarkMode, setIsDarkMode] = useState(false)
 
-  // Initialize Dark Mode based on HTML class or OS preference
   useEffect(() => {
+    // Fetch dynamic models from backend
+    fetch('http://localhost:8000/api/models')
+      .then(res => res.json())
+      .then(data => {
+         setProviderModels(data);
+         
+         // After models load, initialize settings
+         const savedKeys = {
+           gemini: localStorage.getItem('GEMINI_API_KEY') || '',
+           openai: localStorage.getItem('OPENAI_API_KEY') || '',
+           anthropic: localStorage.getItem('ANTHROPIC_API_KEY') || '',
+           deepseek: localStorage.getItem('DEEPSEEK_API_KEY') || '',
+           nvidia: localStorage.getItem('NVIDIA_API_KEY') || ''
+         };
+         const savedProvider = localStorage.getItem('AI_PROVIDER') || '';
+         const savedModel = localStorage.getItem('AI_MODEL') || '';
+         
+         setApiKeys(savedKeys);
+         setProvider(savedProvider);
+         setAiModel(savedModel);
+
+         // Check if the saved model is a custom one not in the list
+         if (savedProvider && savedModel && data[savedProvider]) {
+            const isKnownModel = data[savedProvider].some((m: any) => m.id === savedModel);
+            if (!isKnownModel) {
+               setIsCustomModel(true);
+            }
+         }
+      })
+      .catch(err => console.error("Failed to load models configuration", err));
+
+    // Init Theme
     if (document.documentElement.classList.contains('dark') || 
        (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       setIsDarkMode(true);
       document.documentElement.classList.add('dark');
     }
   }, []);
+
+  const saveSettings = () => {
+    localStorage.setItem('GEMINI_API_KEY', apiKeys.gemini);
+    localStorage.setItem('OPENAI_API_KEY', apiKeys.openai);
+    localStorage.setItem('ANTHROPIC_API_KEY', apiKeys.anthropic);
+    localStorage.setItem('DEEPSEEK_API_KEY', apiKeys.deepseek);
+    localStorage.setItem('NVIDIA_API_KEY', apiKeys.nvidia);
+    localStorage.setItem('AI_PROVIDER', provider);
+    localStorage.setItem('AI_MODEL', aiModel);
+    setShowSettings(false);
+  }
 
   const toggleDarkMode = () => {
     const willBeDark = !isDarkMode;
@@ -34,6 +87,10 @@ function App() {
 
   const handleAnalyze = async () => {
     if (!url) return alert("Please enter a URL first");
+    if (!provider || !aiModel || !apiKeys[provider]) {
+      return alert("Please configure your AI Provider, API Key, and Model in Settings before running an analysis.");
+    }
+
     setIsProcessing(true);
     setResult(null);
     
@@ -54,10 +111,24 @@ function App() {
       const browserMsg = targetBrowser === 'all' ? 'Chromium, Firefox, and WebKit' : targetBrowser;
       setStatusMessage(`Running automated analysis on ${browserMsg}...`);
       
+      const payload = {
+        url,
+        max_pages: 5,
+        target_browser: targetBrowser,
+        ai_model: aiModel,
+        api_keys: {
+          "GEMINI_API_KEY": apiKeys.gemini,
+          "OPENAI_API_KEY": apiKeys.openai,
+          "ANTHROPIC_API_KEY": apiKeys.anthropic,
+          "DEEPSEEK_API_KEY": apiKeys.deepseek,
+          "NVIDIA_API_KEY": apiKeys.nvidia
+        }
+      };
+
       const crawlRes = await fetch('http://localhost:8000/api/crawl/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, max_pages: 5, target_browser: targetBrowser })
+        body: JSON.stringify(payload)
       });
       const crawlData = await crawlRes.json();
       setResult(crawlData.results);
@@ -70,9 +141,34 @@ function App() {
     }
   }
 
+  const getAggregatedBugs = () => {
+    if (!result) return [];
+    const bugMap: Record<string, { desc: string, solution: string, element: string, browsers: string[] }> = {};
+    
+    result.forEach((res: any) => {
+      if (res.ai_report && Array.isArray(res.ai_report)) {
+        res.ai_report.forEach((bug: any) => {
+          if (!bugMap[bug.description]) {
+            bugMap[bug.description] = {
+              desc: bug.description,
+              solution: bug.suggested_solution,
+              element: bug.element_selector,
+              browsers: [res.browser]
+            };
+          } else if (!bugMap[bug.description].browsers.includes(res.browser)) {
+            bugMap[bug.description].browsers.push(res.browser);
+          }
+        });
+      }
+    });
+    return Object.values(bugMap);
+  };
+
+  const aggregatedBugs = getAggregatedBugs();
+
   return (
-    <div className="min-h-screen text-zinc-900 dark:text-zinc-100 p-8 flex flex-col transition-colors duration-200">
-      <div className="max-w-5xl mx-auto w-full flex-grow">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 p-8 flex flex-col transition-colors duration-200">
+      <div className="max-w-6xl mx-auto w-full flex-grow">
         <div className="flex justify-between items-center mb-12">
           <h1 className="text-3xl font-extrabold text-violet-600 dark:text-violet-400 tracking-tight flex items-center gap-2">
             VisualLens
@@ -148,7 +244,7 @@ function App() {
         {/* Settings Modal */}
         {showSettings && (
           <div className="fixed inset-0 bg-zinc-900/60 dark:bg-black/80 backdrop-blur-md flex items-center justify-center z-50">
-             <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl shadow-2xl max-w-sm w-full border border-zinc-200 dark:border-zinc-800 relative">
+             <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl shadow-2xl max-w-md w-full border border-zinc-200 dark:border-zinc-800 relative">
                 <button 
                   onClick={() => setShowSettings(false)}
                   className="absolute top-6 right-6 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition"
@@ -159,22 +255,110 @@ function App() {
                   <Settings size={20} /> Configuration
                 </h3>
                 
-                <div className="mb-8">
-                  <label className="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3">Target Browsers</label>
-                  <select 
-                    className="w-full p-4 rounded-2xl border border-zinc-200 dark:border-zinc-700 focus:ring-2 focus:ring-violet-500 outline-none transition bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white appearance-none"
-                    value={targetBrowser}
-                    onChange={(e) => setTargetBrowser(e.target.value)}
-                  >
-                    <option value="all">All Browsers (Parallel)</option>
-                    <option value="chromium">Chromium</option>
-                    <option value="firefox">Firefox</option>
-                    <option value="webkit">Safari (WebKit)</option>
-                  </select>
+                <div className="space-y-6 mb-8">
+                  <div>
+                    <label className="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Target Browsers</label>
+                    <select 
+                      className="w-full p-3 rounded-2xl border border-zinc-200 dark:border-zinc-700 focus:ring-2 focus:ring-violet-500 outline-none transition bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white appearance-none cursor-pointer"
+                      value={targetBrowser}
+                      onChange={(e) => setTargetBrowser(e.target.value)}
+                    >
+                      <option value="all">All Browsers (Parallel)</option>
+                      <option value="chromium">Chromium</option>
+                      <option value="firefox">Firefox</option>
+                      <option value="webkit">Safari (WebKit)</option>
+                    </select>
+                  </div>
+
+                  <div className="border-t border-zinc-200 dark:border-zinc-800 pt-6">
+                    <label className="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2">1. Select AI Provider</label>
+                    <select 
+                      className="w-full p-3 rounded-xl border border-zinc-200 dark:border-zinc-700 focus:ring-2 focus:ring-violet-500 outline-none transition bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white appearance-none cursor-pointer"
+                      value={provider}
+                      onChange={(e) => {
+                        setProvider(e.target.value);
+                        setAiModel(''); 
+                        setIsCustomModel(false);
+                      }}
+                    >
+                      <option value="" disabled>Select a provider...</option>
+                      <option value="gemini">Google Gemini</option>
+                      <option value="openai">OpenAI</option>
+                      <option value="anthropic">Anthropic</option>
+                      <option value="deepseek">DeepSeek</option>
+                      <option value="nvidia">NVIDIA NIM</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2 flex justify-between">
+                      <span>2. API Key</span>
+                      {!provider && <span className="text-xs text-zinc-400 font-normal">Select a provider first</span>}
+                    </label>
+                    <input 
+                      type="password" 
+                      className="w-full p-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      value={provider ? apiKeys[provider] : ''}
+                      onChange={(e) => setApiKeys({...apiKeys, [provider]: e.target.value})}
+                      placeholder="Enter API Key"
+                      disabled={!provider}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2 flex justify-between">
+                      <span>3. Vision Model</span>
+                      {(!provider || !apiKeys[provider]) && <span className="text-xs text-zinc-400 font-normal">Enter key first</span>}
+                    </label>
+                    
+                    {!isCustomModel ? (
+                      <select 
+                        className="w-full p-3 rounded-xl border border-zinc-200 dark:border-zinc-700 focus:ring-2 focus:ring-violet-500 outline-none transition bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        value={aiModel}
+                        onChange={(e) => {
+                          if (e.target.value === 'custom') {
+                            setIsCustomModel(true);
+                            setAiModel('');
+                          } else {
+                            setAiModel(e.target.value);
+                          }
+                        }}
+                        disabled={!provider || !apiKeys[provider]}
+                      >
+                        <option value="" disabled>Select a model...</option>
+                        {provider && providerModels[provider]?.map((m: any) => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                        <option value="custom" className="font-bold text-violet-600 dark:text-violet-400">
+                          -- Type Custom Model ID --
+                        </option>
+                      </select>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input 
+                          type="text" 
+                          className="flex-grow p-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-violet-500"
+                          value={aiModel}
+                          onChange={(e) => setAiModel(e.target.value)}
+                          placeholder="e.g. provider/model-name"
+                          autoFocus
+                        />
+                        <button 
+                          onClick={() => {
+                            setIsCustomModel(false);
+                            setAiModel('');
+                          }}
+                          className="px-4 bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-xl font-medium transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <button 
-                  onClick={() => setShowSettings(false)}
+                  onClick={saveSettings}
                   className="w-full bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 text-white p-4 rounded-2xl font-bold transition"
                 >
                   Save Settings
@@ -186,10 +370,10 @@ function App() {
         {/* Result Grid */}
         {result && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight">Analysis Results</h2>
+            <h2 className="text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight">Crawl Results</h2>
             <div className={`grid grid-cols-1 ${result.length > 1 ? 'md:grid-cols-3' : 'max-w-md'} gap-6`}>
               {result.map((res: any, idx: number) => (
-                <div key={idx} className="bg-white dark:bg-zinc-900/80 p-5 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 transition-colors backdrop-blur-xl">
+                <div key={idx} className="bg-white dark:bg-zinc-900/80 p-5 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 transition-colors backdrop-blur-xl flex flex-col">
                   <div className="flex items-center justify-between mb-5">
                     <span className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold rounded-full capitalize flex items-center gap-2">
                       {res.browser === 'webkit' ? 'Safari' : res.browser}
@@ -211,22 +395,55 @@ function App() {
                     </div>
                   )}
 
-                  <div className="bg-zinc-950 text-emerald-400 p-4 rounded-2xl overflow-x-auto text-xs h-32 border border-zinc-800 font-mono shadow-inner">
-                    <pre>{res.dom_snippet ? res.dom_snippet + '...' : 'No DOM captured.'}</pre>
+                  <div className="mt-auto pt-4">
+                     <p className="text-xs font-bold text-zinc-500 mb-2">RAW AI OUTPUT (Debug)</p>
+                     <div className="bg-zinc-950 text-emerald-400 p-4 rounded-2xl overflow-y-auto text-xs h-32 border border-zinc-800 font-mono shadow-inner">
+                       <pre>{res.ai_report ? JSON.stringify(res.ai_report, null, 2) : 'No AI report.'}</pre>
+                     </div>
                   </div>
                 </div>
               ))}
             </div>
             
-            {/* Future aggregated AI Bug report will go here */}
-            <div className="bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/50 p-8 rounded-3xl mb-8">
-               <h3 className="text-xl font-bold text-violet-900 dark:text-violet-300 mb-3 flex items-center gap-2">
-                 ✨ Aggregate AI Report (Preview)
-               </h3>
-               <p className="text-sm text-violet-700 dark:text-violet-400 font-medium">
-                 Once the AI Provider is integrated, if a bug is found across multiple engines, it will be listed here as: <strong className="text-violet-900 dark:text-violet-200">"Bug found in: Chromium, Firefox"</strong>
-               </p>
-            </div>
+            {/* Aggregated AI Bug Report */}
+            {aggregatedBugs.length > 0 ? (
+              <div className="bg-violet-50/50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/50 p-8 rounded-3xl mb-8">
+                 <h3 className="text-2xl font-extrabold text-violet-900 dark:text-violet-300 mb-6 flex items-center gap-3">
+                   <Bug className="text-violet-600 dark:text-violet-400" /> Detected Visual Bugs
+                 </h3>
+                 <div className="space-y-4">
+                   {aggregatedBugs.map((bug: any, idx: number) => (
+                     <div key={idx} className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-violet-100 dark:border-zinc-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="flex-grow">
+                          <p className="text-lg font-bold text-zinc-900 dark:text-white mb-2">{bug.desc}</p>
+                          <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 mb-3">
+                             <Code size={16} /> <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md">{bug.element}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400 font-medium">
+                             <Lightbulb size={16} /> {bug.solution}
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-2 min-w-[120px]">
+                           <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider text-center">Affected Engines</span>
+                           <div className="flex gap-2 flex-wrap justify-center">
+                             {bug.browsers.map((b: string) => (
+                               <span key={b} className="px-3 py-1 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-xs font-bold rounded-full capitalize border border-violet-200 dark:border-violet-800/50">
+                                 {b === 'webkit' ? 'Safari' : b}
+                               </span>
+                             ))}
+                           </div>
+                        </div>
+                     </div>
+                   ))}
+                 </div>
+              </div>
+            ) : (
+              <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/50 p-8 rounded-3xl mb-8 flex items-center justify-center">
+                 <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+                   No visual bugs detected. The UI looks great across all tested engines.
+                 </p>
+              </div>
+            )}
           </div>
         )}
       </div>
