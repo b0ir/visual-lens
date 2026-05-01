@@ -6,22 +6,24 @@ VisualLens is an autonomous, AI-powered visual regression and UI testing agent. 
 
 ## Repository Structure
 
-This project uses an industry-standard **Polyglot Monorepo** architecture:
+This project uses an industry-standard **Polyglot Monorepo** architecture managed by a root `package.json` for process management.
 *   `frontend/`: The user interface (React, TypeScript, Vite, TailwindCSS).
 *   `backend/`: The crawler and AI router (Python, FastAPI, Playwright, LiteLLM).
 
-Having clearly separated `frontend` and `backend` directories at the root is the most common pattern for fullstack applications that don't share the same programming language (unlike Next.js fullstack apps).
-
 ## Getting Started
 
-You can start both the React frontend and the FastAPI backend simultaneously using the provided startup script.
+To run this application locally, you will need Node.js and Python 3 installed.
 
+### 1. Initial Setup
+Run the unified setup script from the root of the repository to install both Python and Node dependencies, as well as the Playwright browsers:
 ```bash
-# Make the script executable (only needed once)
-chmod +x start.sh
+npm run setup:all
+```
 
-# Run both servers
-./start.sh
+### 2. Run Development Servers
+Use `concurrently` to spin up both the React frontend and the FastAPI backend in a single terminal with color-coded logs:
+```bash
+npm run dev
 ```
 
 - **Frontend:** `http://localhost:3000`

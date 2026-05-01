@@ -1,0 +1,17 @@
+{
+  "name": "visual-lens-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VisualLens: AI-powered Visual Regression Testing Agent",
+  "scripts": {
+    "setup:frontend": "cd frontend && npm install",
+    "setup:backend": "cd backend && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt && playwright install chromium firefox webkit",
+    "setup:all": "npm run setup:frontend && npm run setup:backend",
+    "start:frontend": "cd frontend && npm run dev -- --port 3000",
+    "start:backend": "cd backend && source venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000 --reload",
+    "dev": "concurrently -c \"blue.bold,green.bold\" -n \"FRONTEND,BACKEND\" \"npm run start:frontend\" \"npm run start:backend\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
