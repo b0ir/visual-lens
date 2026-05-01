@@ -1,0 +1,18 @@
+# Python
+backend/venv/
+backend/__pycache__/
+*.pyc
+backend/.env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# Playwright & App Data
+backend/auth.json
+backend/static/screenshots/*
+!backend/static/screenshots/.gitkeep
+
+# macOS
+.DS_Store
