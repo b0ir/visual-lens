@@ -26,7 +26,7 @@ async def launch_interactive_login(url: str):
         await context.storage_state(path=AUTH_FILE)
         return {"status": "success", "message": "Authentication saved successfully."}
 
-async def _crawl_single_browser(p, start_url: str, browser_type: str, ai_model: str, api_keys: dict):
+async def _crawl_single_browser(p, start_url: str, browser_type: str, ai_model: str, api_key: str):
     engine = get_browser_engine(p, browser_type)
     try:
         if os.path.exists(AUTH_FILE):
@@ -55,9 +55,9 @@ async def _crawl_single_browser(p, start_url: str, browser_type: str, ai_model: 
         
         # Analyze with AI
         ai_report = []
-        if ai_model and any(api_keys.values()):
+        if ai_model and api_key:
             # Trim HTML to avoid massive token limits (keep roughly first 15k chars)
-            ai_report = await analyze_ui(screenshot_path, cleaned_html[:15000], ai_model, api_keys)
+            ai_report = await analyze_ui(screenshot_path, cleaned_html[:15000], ai_model, api_key)
         
         return {
             "status": "success",
@@ -73,13 +73,13 @@ async def _crawl_single_browser(p, start_url: str, browser_type: str, ai_model: 
             "error": str(e)
         }
 
-async def run_headless_crawler(start_url: str, max_pages: int, target_browser: str, ai_model: str, api_keys: dict):
+async def run_headless_crawler(start_url: str, max_pages: int, target_browser: str, ai_model: str, api_key: str):
     async with async_playwright() as p:
         if target_browser.lower() == "all":
             browsers = ["chromium", "firefox", "webkit"]
         else:
             browsers = [target_browser.lower()]
             
-        tasks = [_crawl_single_browser(p, start_url, b, ai_model, api_keys) for b in browsers]
+        tasks = [_crawl_single_browser(p, start_url, b, ai_model, api_key) for b in browsers]
         results = await asyncio.gather(*tasks)
         return {"status": "success", "results": results}

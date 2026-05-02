@@ -1,10 +1,11 @@
-import os
 import base64
 import json
 from litellm import acompletion
 import logging
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def encode_image(image_path: str):
     with open(image_path, "rb") as image_file:
@@ -26,15 +27,19 @@ Format exactly like this:
 If there are absolutely no bugs, return an empty array: []
 """
 
-async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_keys: dict):
-    try:
-        # Temporarily set environment variables for LiteLLM
-        for key, value in api_keys.items():
-            if value:
-                os.environ[key] = value
+async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: str):
+    """
+    Analyze a UI screenshot using a vision-capable LLM.
 
+    Args:
+        image_path: Path to the screenshot file.
+        dom_html: Simplified HTML DOM string.
+        model_name: LiteLLM model identifier (e.g., "openai/gpt-4.1").
+        api_key: The provider's API key, passed directly to LiteLLM.
+    """
+    try:
         base64_image = encode_image(image_path)
-        
+
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": [
@@ -42,24 +47,25 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_keys: 
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}"}}
             ]}
         ]
-        
-        logging.info(f"Sending request to {model_name}...")
+
+        logger.info(f"Sending request to {model_name}...")
         response = await acompletion(
             model=model_name,
             messages=messages,
-            temperature=0.1
+            temperature=0.1,
+            api_key=api_key,
         )
-        
+
         content = response.choices[0].message.content.strip()
-        logging.info(f"AI Response received.")
-        
+        logger.info(f"AI Response received.")
+
         # Clean up markdown formatting if the AI ignores the system prompt
         if content.startswith("```json"):
             content = content[7:-3]
         elif content.startswith("```"):
             content = content[3:-3]
-            
+
         return json.loads(content.strip())
     except Exception as e:
-        logging.error(f"AI Analysis failed: {e}")
+        logger.error(f"AI Analysis failed: {e}")
         return [{"description": f"AI Analysis failed", "element_selector": "N/A", "suggested_solution": str(e)}]

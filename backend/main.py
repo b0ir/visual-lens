@@ -2,9 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from typing import Optional
 import crawler
 import os
-import json
+from providers import get_providers_catalog, verify_api_key
 
 app = FastAPI(title="VisualLens API", description="AI-powered Visual Regression Testing Agent")
 
@@ -22,25 +23,32 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 class AuthRequest(BaseModel):
     url: str
 
+class VerifyKeyRequest(BaseModel):
+    provider_id: str
+    api_key: str
+
 class CrawlRequest(BaseModel):
     url: str
     max_pages: int = 5
     target_browser: str = "all"
-    ai_model: str = ""
-    api_keys: dict = {}
+    provider_id: str = ""
+    api_key: str = ""
+    model_id: str = ""
 
 @app.get("/")
 def read_root():
     return {"message": "Welcome to VisualLens API"}
 
-@app.get("/api/models")
-def get_models():
-    file_path = os.path.join(os.path.dirname(__file__), "models.json")
-    try:
-        with open(file_path, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
+@app.get("/api/providers")
+def get_providers():
+    """Return the full provider catalog with vision models."""
+    return get_providers_catalog()
+
+@app.post("/api/providers/verify")
+async def verify_provider_key(req: VerifyKeyRequest):
+    """Verify an API key against a provider."""
+    result = await verify_api_key(req.provider_id, req.api_key)
+    return result
 
 @app.post("/api/auth/start")
 async def start_interactive_auth(req: AuthRequest):
@@ -49,7 +57,9 @@ async def start_interactive_auth(req: AuthRequest):
 
 @app.post("/api/crawl/start")
 async def start_crawl(req: CrawlRequest):
-    result = await crawler.run_headless_crawler(req.url, req.max_pages, req.target_browser, req.ai_model, req.api_keys)
+    result = await crawler.run_headless_crawler(
+        req.url, req.max_pages, req.target_browser, req.model_id, req.api_key
+    )
     return result
 
 if __name__ == "__main__":
