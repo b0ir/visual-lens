@@ -67,5 +67,14 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
 
         return json.loads(content.strip())
     except Exception as e:
-        logger.error(f"AI Analysis failed: {e}")
-        return [{"description": f"AI Analysis failed", "element_selector": "N/A", "suggested_solution": str(e)}]
+        error_msg = str(e)
+        logger.error(f"AI Analysis failed: {error_msg}")
+        
+        if "RateLimitError" in error_msg or "429" in error_msg or "quota" in error_msg.lower():
+            raise Exception("Rate limit or quota exceeded. Please check your API provider billing and limits.")
+        elif "AuthenticationError" in error_msg or "401" in error_msg:
+            raise Exception("Authentication failed. Please verify your API key is correct.")
+        elif "ContextWindowExceededError" in error_msg or "too large" in error_msg.lower():
+            raise Exception("The page content is too large for this model's context window.")
+            
+        raise Exception("AI API request failed. See backend logs for details.")
