@@ -47,6 +47,13 @@ function App() {
 
   const isConfigured = !!(activeProvider && activeApiKey && activeModel)
 
+  const getNativeBrowserType = () => {
+    const ua = navigator.userAgent.toLowerCase()
+    if (ua.includes('firefox')) return 'firefox'
+    if (ua.includes('safari') && !ua.includes('chrome')) return 'webkit'
+    return 'chromium'
+  }
+
   const handleAnalyze = async () => {
     if (!url) return alert('Please enter a URL first')
     if (!isConfigured) return alert('Please configure your AI provider in Settings first.')
@@ -57,10 +64,11 @@ function App() {
     try {
       if (needsAuth) {
         setStatusMessage('Waiting for authentication. Please log in and close the browser window...')
+        const browserType = targetBrowser === 'all' ? getNativeBrowserType() : targetBrowser;
         const r = await fetch('http://localhost:8000/api/auth/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url }),
+          body: JSON.stringify({ url, browser_type: browserType }),
         })
         const d = await r.json()
         if (d.status !== 'success') throw new Error('Authentication failed or was cancelled.')

@@ -22,6 +22,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class AuthRequest(BaseModel):
     url: str
+    browser_type: str = "chromium"
 
 class VerifyKeyRequest(BaseModel):
     provider_id: str
@@ -52,7 +53,7 @@ async def verify_provider_key(req: VerifyKeyRequest):
 
 @app.post("/api/auth/start")
 async def start_interactive_auth(req: AuthRequest):
-    result = await crawler.launch_interactive_login(req.url)
+    result = await crawler.launch_interactive_login(req.url, req.browser_type)
     return result
 
 @app.post("/api/crawl/start")

@@ -13,9 +13,10 @@ def get_browser_engine(p, browser_type: str):
     else:
         return p.chromium
 
-async def launch_interactive_login(url: str):
+async def launch_interactive_login(url: str, browser_type: str = "chromium"):
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        engine = get_browser_engine(p, browser_type)
+        browser = await engine.launch(headless=False)
         context = await browser.new_context()
         page = await context.new_page()
         await page.goto(url)
@@ -37,10 +38,12 @@ async def _crawl_single_browser(p, start_url: str, browser_type: str, ai_model: 
             context = await browser.new_context()
             
         page = await context.new_page()
-        await page.goto(start_url)
+        import time
+        timestamp = int(time.time())
+        await page.goto(start_url, wait_until="networkidle")
         
         os.makedirs("static/screenshots", exist_ok=True)
-        screenshot_path = f"static/screenshots/home_{browser_type}.png"
+        screenshot_path = f"static/screenshots/home_{browser_type}_{timestamp}.png"
         await page.screenshot(path=screenshot_path, full_page=True)
         
         cleaned_html = await page.evaluate('''() => {
