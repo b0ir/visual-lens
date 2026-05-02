@@ -80,6 +80,16 @@ PROVIDERS = {
             {"id": "openrouter/qwen/qwen-2.5-vl-72b-instruct", "name": "Qwen 2.5 VL 72B (via OpenRouter)"},
         ],
     },
+    "nvidia": {
+        "name": "NVIDIA",
+        "env_key": "NVIDIA_API_KEY",
+        "website": "https://build.nvidia.com/",
+        "description": "NVIDIA NIM vision models",
+        "vision_models": [
+            {"id": "nvidia/meta/llama-3.2-90b-vision-instruct", "name": "Llama 3.2 90B Vision"},
+            {"id": "nvidia/meta/llama-3.2-11b-vision-instruct", "name": "Llama 3.2 11B Vision"},
+        ],
+    },
 }
 
 
@@ -160,6 +170,15 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
             elif provider_id == "openrouter":
                 resp = await client.get(
                     "https://openrouter.ai/api/v1/auth/key",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                if resp.status_code == 200:
+                    return {"valid": True}
+                return {"valid": False, "error": "Invalid API key"}
+
+            elif provider_id == "nvidia":
+                resp = await client.get(
+                    "https://integrate.api.nvidia.com/v1/models",
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
                 if resp.status_code == 200:

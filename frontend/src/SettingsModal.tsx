@@ -25,6 +25,7 @@ const PROVIDER_ICONS: Record<string, string> = {
   deepseek: '◉',
   xai: '✕',
   openrouter: '⌘',
+  nvidia: '🅝',
 }
 
 export default function SettingsModal({
