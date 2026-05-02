@@ -1,30 +1,48 @@
 # VisualLens (Work In Progress)
 
-VisualLens is an autonomous, AI-powered visual regression and UI testing agent. It crawls web pages, captures screenshots across multiple rendering engines (Chromium, Firefox, WebKit) concurrently, and uses Multimodal Vision LLMs to detect UI/UX bugs, broken layouts, and overlapping elements.
+VisualLens is an autonomous, AI-powered visual regression and UI testing agent. It crawls web pages, captures screenshots across multiple rendering engines (Chromium, Firefox, WebKit) concurrently, and uses multimodal vision LLMs to detect UI/UX bugs, broken layouts, and overlapping elements.
 
-> **Note:** This project is currently a Work in Progress (WIP). The UI and crawling architecture are complete; the Multimodal AI Integration layer is currently under active development.
+## Features
+
+- **Multi-browser crawling** — captures pages screenshots in Chromium, Firefox, and WebKit in parallel.
+- **Vision AI analysis** — sends screenshots + simplified DOM to a vision LLM and receives structured bug reports.
+- **Bring your own key** — supports OpenAI, Anthropic, Google Gemini, DeepSeek, xAI, and OpenRouter. Enter your API key, verify it, and pick from available vision models.
+- **Auth support** — for pages behind login, opens an interactive browser window for manual login before crawling.
+- **Dark mode**.
 
 ## Repository Structure
 
-This project uses an industry-standard **Polyglot Monorepo** architecture managed by a root `package.json` for process management.
-*   `frontend/`: The user interface (React, TypeScript, Vite, TailwindCSS).
-*   `backend/`: The crawler and AI router (Python, FastAPI, Playwright, LiteLLM).
+Polyglot Monorepo managed by a root `package.json`.
+
+- `frontend/` — React, TypeScript, Vite, TailwindCSS v4.
+- `backend/` — Python, FastAPI, Playwright (async), LiteLLM.
+  - `providers.py` — single source of truth for supported AI providers and vision models.
 
 ## Getting Started
 
-To run this application locally, you will need Node.js and Python 3 installed.
+Requires Node.js and Python 3.
 
-### 1. Initial Setup
-Run the unified setup script from the root of the repository to install both Python and Node dependencies, as well as the Playwright browsers:
+### 1. Setup
+
 ```bash
 npm run setup:all
 ```
 
-### 2. Run Development Servers
-Use `concurrently` to spin up both the React frontend and the FastAPI backend in a single terminal with color-coded logs:
+Installs Node and Python dependencies, creates a virtualenv, and downloads Playwright browsers.
+
+### 2. Run
+
 ```bash
 npm run dev
 ```
 
 - **Frontend:** `http://localhost:3000`
 - **Backend API:** `http://localhost:8000`
+
+### 3. Configure
+
+Open Settings in the UI, select your AI provider, paste your API key, verify it, and choose a vision model.
+
+## Adding a Provider
+
+Edit `backend/providers.py` and add an entry to the `PROVIDERS` dict. No other files need to change.
