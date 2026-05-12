@@ -1,17 +1,23 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 import crawler
 import os
 from providers import get_providers_catalog, verify_api_key
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI(title="VisualLens API", description="AI-powered Visual Regression Testing Agent")
 
+_allowed_origins_raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173")
+_allowed_origins = [o.strip() for o in _allowed_origins_raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -24,6 +30,13 @@ class AuthRequest(BaseModel):
     url: str
     browser_type: str = "chromium"
 
+    @field_validator("url")
+    @classmethod
+    def url_must_be_http(cls, v: str) -> str:
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("URL must start with http:// or https://")
+        return v
+
 class VerifyKeyRequest(BaseModel):
     provider_id: str
     api_key: str
@@ -35,6 +48,18 @@ class CrawlRequest(BaseModel):
     provider_id: str = ""
     api_key: str = ""
     model_id: str = ""
+
+    @field_validator("url")
+    @classmethod
+    def url_must_be_http(cls, v: str) -> str:
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("URL must start with http:// or https://")
+        return v
+
+    @field_validator("max_pages")
+    @classmethod
+    def clamp_max_pages(cls, v: int) -> int:
+        return max(1, min(v, 50))
 
 @app.get("/")
 def read_root():
