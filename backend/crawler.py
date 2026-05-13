@@ -13,6 +13,8 @@ def get_browser_engine(p, browser_type: str):
     else:
         return p.chromium
 
+LOGIN_TIMEOUT_SECONDS = int(os.environ.get("LOGIN_TIMEOUT_SECONDS", "300"))
+
 async def launch_interactive_login(url: str, browser_type: str = "chromium"):
     async with async_playwright() as p:
         engine = get_browser_engine(p, browser_type)
@@ -20,10 +22,15 @@ async def launch_interactive_login(url: str, browser_type: str = "chromium"):
         context = await browser.new_context()
         page = await context.new_page()
         await page.goto(url)
-        
+
+        elapsed = 0
         while browser.is_connected():
             await asyncio.sleep(1)
-            
+            elapsed += 1
+            if elapsed >= LOGIN_TIMEOUT_SECONDS:
+                await browser.close()
+                return {"status": "error", "message": f"Login timed out after {LOGIN_TIMEOUT_SECONDS} seconds."}
+
         await context.storage_state(path=AUTH_FILE)
         return {"status": "success", "message": "Authentication saved successfully."}
 
