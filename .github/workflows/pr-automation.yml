@@ -130,32 +130,32 @@ jobs:
             });
 
   # ─────────────────────────────────────────────
-  # 3. Gemini AI code review
+  # 3. AI code review (Qwen3-Coder via NVIDIA NIM)
   # ─────────────────────────────────────────────
   ai-review:
-    name: Gemini Code Review
+    name: AI Code Review
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Review with Gemini and post comment
+      - name: Review with Qwen and post comment
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GH_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER:      ${{ github.event.pull_request.number }}
-          PR_TITLE:       ${{ github.event.pull_request.title }}
-          PR_BODY:        ${{ github.event.pull_request.body }}
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          GH_TOKEN:           ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER:          ${{ github.event.pull_request.number }}
+          PR_TITLE:           ${{ github.event.pull_request.title }}
+          PR_BODY:            ${{ github.event.pull_request.body }}
         run: |
           python3 - <<'PYEOF'
           import os, json, urllib.request, subprocess, sys
 
-          api_key  = os.environ.get("GEMINI_API_KEY", "")
+          api_key  = os.environ.get("NVIDIA_NIM_API_KEY", "")
           pr_num   = os.environ["PR_NUMBER"]
           pr_title = os.environ.get("PR_TITLE", "")
           pr_body  = os.environ.get("PR_BODY", "") or ""
 
           if not api_key:
-              print("GEMINI_API_KEY not set — skipping AI review")
+              print("NVIDIA_NIM_API_KEY not set — skipping AI review")
               sys.exit(0)
 
           # Get diff (cap at 12 000 chars to stay within token budget)
@@ -187,24 +187,29 @@ jobs:
           ```"""
 
           payload = {
-              "contents": [{"parts": [{"text": prompt}]}],
-              "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1024},
+              "model": "qwen/qwen3-coder-480b-a35b-instruct",
+              "messages": [{"role": "user", "content": prompt}],
+              "temperature": 0.2,
+              "max_tokens": 1024,
           }
 
           req = urllib.request.Request(
-              f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}",
+              "https://integrate.api.nvidia.com/v1/chat/completions",
               data=json.dumps(payload).encode(),
-              headers={"Content-Type": "application/json"},
+              headers={
+                  "Content-Type": "application/json",
+                  "Authorization": f"Bearer {api_key}",
+              },
           )
           try:
-              with urllib.request.urlopen(req, timeout=30) as resp:
+              with urllib.request.urlopen(req, timeout=60) as resp:
                   data = json.loads(resp.read())
-              review = data["candidates"][0]["content"]["parts"][0]["text"]
+              review = data["choices"][0]["message"]["content"]
           except Exception as e:
-              print(f"Gemini API error: {e}")
+              print(f"NIM API error: {e}")
               sys.exit(0)
 
-          comment = f"## Gemini Code Review 🤖\n\n{review}\n\n---\n*Powered by Gemini 2.0 Flash*"
+          comment = f"## AI Code Review 🤖\n\n{review}\n\n---\n*Powered by Qwen3-Coder 480B via NVIDIA NIM*"
 
           subprocess.run(
               ["gh", "pr", "comment", pr_num, "--body", comment],
