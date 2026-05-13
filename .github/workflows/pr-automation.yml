@@ -1,0 +1,214 @@
+name: PR Automation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1. Auto-label and auto-assign
+  # ─────────────────────────────────────────────
+  label-and-assign:
+    name: Label & Assign
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply label and assign reviewer
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.payload.pull_request.head.ref;
+            const pr     = context.payload.pull_request.number;
+            const owner  = context.repo.owner;
+            const repo   = context.repo.repo;
+            const author = context.payload.pull_request.user.login;
+
+            // ── Label map ──────────────────────────────────────────────
+            const labelDefs = [
+              { pattern: /^(fix|bugfix|hotfix)\//, name: 'bug',           color: 'd73a4a' },
+              { pattern: /^(feat|feature)\//,       name: 'enhancement',  color: '0075ca' },
+              { pattern: /^docs?\//,                name: 'documentation', color: '0075ca' },
+              { pattern: /^(chore|ci|build)\//,     name: 'chore',        color: 'e4e669' },
+              { pattern: /^refactor\//,             name: 'refactor',     color: 'd4c5f9' },
+              { pattern: /^(deps?|dependabot)\//,   name: 'dependencies', color: '0366d6' },
+            ];
+
+            // Ensure all labels exist in the repo
+            const existingLabels = await github.rest.issues.listLabelsForRepo({ owner, repo, per_page: 100 });
+            const existingNames  = existingLabels.data.map(l => l.name);
+
+            for (const def of labelDefs) {
+              if (!existingNames.includes(def.name)) {
+                await github.rest.issues.createLabel({ owner, repo, name: def.name, color: def.color }).catch(() => {});
+              }
+            }
+            if (!existingNames.includes('needs-triage')) {
+              await github.rest.issues.createLabel({ owner, repo, name: 'needs-triage', color: 'ededed' }).catch(() => {});
+            }
+
+            // Determine which label to apply
+            const matched = labelDefs.find(d => d.pattern.test(branch));
+            const labelToApply = matched ? matched.name : 'needs-triage';
+
+            await github.rest.issues.addLabels({ owner, repo, issue_number: pr, labels: [labelToApply] });
+            console.log(`Applied label: ${labelToApply}`);
+
+            // ── Assignee (always works, even for self) ─────────────────
+            await github.rest.issues.addAssignees({ owner, repo, issue_number: pr, assignees: ['b0ir'] });
+            console.log('Assigned: b0ir');
+
+            // ── Reviewer (GitHub blocks self-review requests) ──────────
+            if (author !== 'b0ir') {
+              await github.rest.pulls.requestReviewers({ owner, repo, pull_number: pr, reviewers: ['b0ir'] }).catch(() => {});
+              console.log('Requested review from: b0ir');
+            }
+
+  # ─────────────────────────────────────────────
+  # 2. Quick checks — lint, type-check, build
+  # ─────────────────────────────────────────────
+  quick-checks:
+    name: Quick Checks
+    runs-on: ubuntu-latest
+    outputs:
+      lint_result:       ${{ steps.lint.outcome }}
+      typecheck_result:  ${{ steps.typecheck.outcome }}
+      build_result:      ${{ steps.build.outcome }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+
+      - name: Lint
+        id: lint
+        run: cd frontend && npm run lint
+        continue-on-error: true
+
+      - name: Type check
+        id: typecheck
+        run: cd frontend && npx tsc --noEmit
+        continue-on-error: true
+
+      - name: Build
+        id: build
+        run: cd frontend && npm run build
+        continue-on-error: true
+
+      - name: Post checks summary comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const icon = (r) => r === 'success' ? '✅' : '❌';
+            const body = [
+              '## PR Quick Checks',
+              '',
+              '| Check | Result |',
+              '|---|---|',
+              `| Lint | ${icon('${{ steps.lint.outcome }}')} \`${{ steps.lint.outcome }}\` |`,
+              `| Type check | ${icon('${{ steps.typecheck.outcome }}')} \`${{ steps.typecheck.outcome }}\` |`,
+              `| Build | ${icon('${{ steps.build.outcome }}')} \`${{ steps.build.outcome }}\` |`,
+              '',
+              `> Run on commit \`${{ github.event.pull_request.head.sha }}\``,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+  # ─────────────────────────────────────────────
+  # 3. Gemini AI code review
+  # ─────────────────────────────────────────────
+  ai-review:
+    name: Gemini Code Review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Review with Gemini and post comment
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER:      ${{ github.event.pull_request.number }}
+          PR_TITLE:       ${{ github.event.pull_request.title }}
+          PR_BODY:        ${{ github.event.pull_request.body }}
+        run: |
+          python3 - <<'PYEOF'
+          import os, json, urllib.request, subprocess, sys
+
+          api_key  = os.environ.get("GEMINI_API_KEY", "")
+          pr_num   = os.environ["PR_NUMBER"]
+          pr_title = os.environ.get("PR_TITLE", "")
+          pr_body  = os.environ.get("PR_BODY", "") or ""
+
+          if not api_key:
+              print("GEMINI_API_KEY not set — skipping AI review")
+              sys.exit(0)
+
+          # Get diff (cap at 12 000 chars to stay within token budget)
+          diff_raw = subprocess.run(
+              ["gh", "pr", "diff", pr_num],
+              capture_output=True, text=True
+          ).stdout
+          diff = diff_raw[:12000]
+          if not diff.strip():
+              print("Empty diff — skipping AI review")
+              sys.exit(0)
+
+          prompt = f"""You are a senior software engineer reviewing a pull request.
+          Analyze the diff and provide a concise review covering:
+          1. **Summary** — what the PR does
+          2. **Bugs / logic errors** — anything that looks broken
+          3. **Security concerns** — if any
+          4. **Code quality** — notable issues only, skip style nits
+          5. **Verdict** — one of: ✅ Looks good | ⚠️ Minor issues | ❌ Needs work
+
+          Be specific and actionable. Format in Markdown.
+
+          **PR Title:** {pr_title}
+          **PR Description:** {pr_body}
+
+          **Diff** (may be truncated):
+          ```diff
+          {diff}
+          ```"""
+
+          payload = {
+              "contents": [{"parts": [{"text": prompt}]}],
+              "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1024},
+          }
+
+          req = urllib.request.Request(
+              f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}",
+              data=json.dumps(payload).encode(),
+              headers={"Content-Type": "application/json"},
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  data = json.loads(resp.read())
+              review = data["candidates"][0]["content"]["parts"][0]["text"]
+          except Exception as e:
+              print(f"Gemini API error: {e}")
+              sys.exit(0)
+
+          comment = f"## Gemini Code Review 🤖\n\n{review}\n\n---\n*Powered by Gemini 2.0 Flash*"
+
+          subprocess.run(
+              ["gh", "pr", "comment", pr_num, "--body", comment],
+              check=True
+          )
+          print("Review comment posted.")
+          PYEOF
