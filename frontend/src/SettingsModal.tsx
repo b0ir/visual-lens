@@ -32,12 +32,18 @@ export default function SettingsModal({
   onClose, onSave, initialProviderId, initialApiKey, initialModelId, targetBrowser, onTargetBrowserChange
 }: Props) {
   const [providers, setProviders] = useState<Record<string, Provider>>({})
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [step, setStep] = useState<1 | 2 | 3>(() => {
+    if (initialProviderId && initialApiKey) return 3
+    if (initialProviderId) return 2
+    return 1
+  })
   const [selectedProvider, setSelectedProvider] = useState(initialProviderId)
   const [apiKey, setApiKey] = useState(initialApiKey)
   const [modelId, setModelId] = useState(initialModelId)
   const [isCustomModel, setIsCustomModel] = useState(false)
-  const [verifyStatus, setVerifyStatus] = useState<'idle' | 'loading' | 'valid' | 'invalid'>('idle')
+  const [verifyStatus, setVerifyStatus] = useState<'idle' | 'loading' | 'valid' | 'invalid'>(
+    () => (initialProviderId && initialApiKey ? 'valid' : 'idle')
+  )
   const [verifyError, setVerifyError] = useState('')
   const [showKey, setShowKey] = useState(false)
 
@@ -47,15 +53,6 @@ export default function SettingsModal({
       .then(setProviders)
       .catch(console.error)
   }, [])
-
-  useEffect(() => {
-    if (initialProviderId && initialApiKey) {
-      setStep(3)
-      setVerifyStatus('valid')
-    } else if (initialProviderId) {
-      setStep(2)
-    }
-  }, [initialProviderId, initialApiKey])
 
   const handleSelectProvider = (pid: string) => {
     setSelectedProvider(pid)

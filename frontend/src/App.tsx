@@ -2,35 +2,48 @@ import { useState, useEffect } from 'react'
 import { Play, Loader2, Info, Sun, Moon, Bug, Lightbulb, Code } from 'lucide-react'
 import SettingsModal from './SettingsModal'
 
+interface BugReport {
+  description: string
+  suggested_solution: string
+  element_selector: string
+}
+
+interface CrawlResult {
+  browser: string
+  status: string
+  screenshot?: string
+  error?: string
+  ai_report?: BugReport[]
+}
+
 function App() {
   const [url, setUrl] = useState('')
   const [needsAuth, setNeedsAuth] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [statusMessage, setStatusMessage] = useState('')
-  const [result, setResult] = useState<any>(null)
+  const [result, setResult] = useState<CrawlResult[] | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [targetBrowser, setTargetBrowser] = useState('all')
-  const [isDarkMode, setIsDarkMode] = useState(false)
+  const [isDarkMode, setIsDarkMode] = useState(
+    () => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false
+  )
 
-  // Active AI config (saved from settings)
-  const [activeProvider, setActiveProvider] = useState('')
-  const [activeApiKey, setActiveApiKey] = useState('')
-  const [activeModel, setActiveModel] = useState('')
+  // Active AI config — lazy-initialised from localStorage to avoid setState-in-effect
+  const [activeProvider, setActiveProvider] = useState(
+    () => localStorage.getItem('VL_PROVIDER') || ''
+  )
+  const [activeApiKey, setActiveApiKey] = useState(() => {
+    const p = localStorage.getItem('VL_PROVIDER') || ''
+    return p ? localStorage.getItem(`VL_API_KEY_${p}`) || '' : ''
+  })
+  const [activeModel, setActiveModel] = useState(() => {
+    const p = localStorage.getItem('VL_PROVIDER') || ''
+    return p ? localStorage.getItem(`VL_MODEL_${p}`) || '' : ''
+  })
 
   useEffect(() => {
-    // Restore saved AI config
-    const savedProvider = localStorage.getItem('VL_PROVIDER') || ''
-    setActiveProvider(savedProvider)
-    if (savedProvider) {
-      setActiveApiKey(localStorage.getItem(`VL_API_KEY_${savedProvider}`) || '')
-      setActiveModel(localStorage.getItem(`VL_MODEL_${savedProvider}`) || '')
-    }
-    // Init dark mode from system preference
-    if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
-      setIsDarkMode(true)
-      document.documentElement.classList.add('dark')
-    }
-  }, [])
+    document.documentElement.classList.toggle('dark', isDarkMode)
+  }, [isDarkMode])
 
   const toggleDarkMode = () => {
     const next = !isDarkMode
@@ -91,8 +104,8 @@ function App() {
       })
       const data = await res.json()
       setResult(data.results)
-    } catch (e: any) {
-      alert(`Error: ${e.message}`)
+    } catch (e: unknown) {
+      alert(`Error: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setIsProcessing(false)
       setStatusMessage('')
@@ -102,9 +115,9 @@ function App() {
   const getAggregatedBugs = () => {
     if (!result) return []
     const bugMap: Record<string, { desc: string; solution: string; element: string; browsers: string[] }> = {}
-    result.forEach((res: any) => {
+    result.forEach((res) => {
       if (res.ai_report && Array.isArray(res.ai_report)) {
-        res.ai_report.forEach((bug: any) => {
+        res.ai_report.forEach((bug) => {
           if (!bugMap[bug.description]) {
             bugMap[bug.description] = { desc: bug.description, solution: bug.suggested_solution, element: bug.element_selector, browsers: [res.browser] }
           } else if (!bugMap[bug.description].browsers.includes(res.browser)) {
@@ -210,7 +223,7 @@ function App() {
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h2 className="text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight">Crawl Results</h2>
             <div className={`grid grid-cols-1 ${result.length > 1 ? 'md:grid-cols-3' : 'max-w-md'} gap-6`}>
-              {result.map((res: any, idx: number) => (
+              {result.map((res, idx) => (
                 <div key={idx} className="bg-white dark:bg-zinc-900/80 p-5 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 transition-colors backdrop-blur-xl flex flex-col">
                   <div className="flex items-center justify-between mb-5">
                     <span className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold rounded-full capitalize">
@@ -238,7 +251,7 @@ function App() {
                   <Bug className="text-violet-600 dark:text-violet-400" /> Detected Visual Bugs
                 </h3>
                 <div className="space-y-4">
-                  {aggregatedBugs.map((bug: any, idx: number) => (
+                  {aggregatedBugs.map((bug, idx) => (
                     <div key={idx} className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-violet-100 dark:border-zinc-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
                       <div className="flex-grow">
                         <p className="text-lg font-bold text-zinc-900 dark:text-white mb-2">{bug.desc}</p>
