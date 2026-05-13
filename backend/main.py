@@ -12,7 +12,7 @@ load_dotenv()
 
 app = FastAPI(title="VisualLens API", description="AI-powered Visual Regression Testing Agent")
 
-_allowed_origins_raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173")
+_allowed_origins_raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000")
 _allowed_origins = [o.strip() for o in _allowed_origins_raw.split(",") if o.strip()]
 
 app.add_middleware(
