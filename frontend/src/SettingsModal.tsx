@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Settings, X, CheckCircle, XCircle, Loader2, ExternalLink, ChevronRight } from 'lucide-react'
+import { API_BASE } from './lib/api'
 
 interface Provider {
   name: string
@@ -48,7 +49,7 @@ export default function SettingsModal({
   const [showKey, setShowKey] = useState(false)
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/providers')
+    fetch(`${API_BASE}/api/providers`)
       .then(r => r.json())
       .then(setProviders)
       .catch(console.error)
@@ -67,7 +68,7 @@ export default function SettingsModal({
     setVerifyStatus('loading')
     setVerifyError('')
     try {
-      const res = await fetch('http://localhost:8000/api/providers/verify', {
+      const res = await fetch(`${API_BASE}/api/providers/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider_id: selectedProvider, api_key: apiKey }),

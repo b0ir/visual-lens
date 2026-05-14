@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Play, Loader2, Info, Sun, Moon, Bug, Lightbulb, Code } from 'lucide-react'
 import SettingsModal from './SettingsModal'
+import { API_BASE } from './lib/api'
 
 interface BugReport {
   description: string
@@ -24,9 +25,10 @@ function App() {
   const [result, setResult] = useState<CrawlResult[] | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [targetBrowser, setTargetBrowser] = useState('all')
-  const [isDarkMode, setIsDarkMode] = useState(
-    () => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false
-  )
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('VL_DARK_MODE')
+    return saved !== null ? saved === 'true' : (window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
+  })
 
   // Active AI config — lazy-initialised from localStorage to avoid setState-in-effect
   const [activeProvider, setActiveProvider] = useState(
@@ -49,6 +51,7 @@ function App() {
     const next = !isDarkMode
     setIsDarkMode(next)
     document.documentElement.classList.toggle('dark', next)
+    localStorage.setItem('VL_DARK_MODE', String(next))
   }
 
   const handleSaveSettings = (providerId: string, apiKey: string, modelId: string) => {
@@ -78,7 +81,7 @@ function App() {
       if (needsAuth) {
         setStatusMessage('Waiting for authentication. Please log in and close the browser window...')
         const browserType = targetBrowser === 'all' ? getNativeBrowserType() : targetBrowser;
-        const r = await fetch('http://localhost:8000/api/auth/start', {
+        const r = await fetch(`${API_BASE}/api/auth/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url, browser_type: browserType }),
@@ -90,7 +93,7 @@ function App() {
       const browserLabel = targetBrowser === 'all' ? 'Chromium, Firefox, and WebKit' : targetBrowser
       setStatusMessage(`Running automated analysis on ${browserLabel}...`)
 
-      const res = await fetch('http://localhost:8000/api/crawl/start', {
+      const res = await fetch(`${API_BASE}/api/crawl/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -233,7 +236,7 @@ function App() {
                       ? <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-full border border-emerald-200 dark:border-emerald-800/50">SUCCESS</span>
                       : <span className="text-xs font-extrabold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-3 py-1.5 rounded-full border border-rose-200 dark:border-rose-800/50">ERROR</span>}
                   </div>
-                  {res.screenshot && <img src={`http://localhost:8000/${res.screenshot}`} alt={`${res.browser} screenshot`} className="w-full h-auto rounded-2xl border border-zinc-200 dark:border-zinc-700 mb-5 object-cover" />}
+                  {res.screenshot && <img src={`${API_BASE}/${res.screenshot}`} alt={`${res.browser} screenshot`} className="w-full h-auto rounded-2xl border border-zinc-200 dark:border-zinc-700 mb-5 object-cover" />}
                   {res.error && <div className="text-sm font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 p-4 rounded-2xl mb-5 border border-rose-100 dark:border-rose-900/50">{res.error}</div>}
                   <div className="mt-auto pt-4">
                     <p className="text-xs font-bold text-zinc-500 mb-2">RAW AI OUTPUT (Debug)</p>
@@ -276,9 +279,13 @@ function App() {
                   ))}
                 </div>
               </div>
-            ) : (
+            ) : result && result.every(r => r.status === 'success') ? (
               <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/50 p-8 rounded-3xl mb-8 flex items-center justify-center">
                 <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">No visual bugs detected. The UI looks great across all tested engines.</p>
+              </div>
+            ) : (
+              <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 p-8 rounded-3xl mb-8 flex items-center justify-center">
+                <p className="text-lg font-bold text-amber-700 dark:text-amber-400">Analysis incomplete — one or more browsers returned errors. Check individual results above.</p>
               </div>
             )}
           </div>
