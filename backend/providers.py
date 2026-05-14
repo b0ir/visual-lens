@@ -86,8 +86,8 @@ PROVIDERS = {
         "website": "https://build.nvidia.com/",
         "description": "NVIDIA NIM vision models",
         "vision_models": [
-            {"id": "nvidia/meta/llama-3.2-90b-vision-instruct", "name": "Llama 3.2 90B Vision"},
-            {"id": "nvidia/meta/llama-3.2-11b-vision-instruct", "name": "Llama 3.2 11B Vision"},
+            {"id": "nvidia_nim/meta/llama-3.2-90b-vision-instruct", "name": "Llama 3.2 90B Vision"},
+            {"id": "nvidia_nim/meta/llama-3.2-11b-vision-instruct", "name": "Llama 3.2 11B Vision"},
         ],
     },
 }
