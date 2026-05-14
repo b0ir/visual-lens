@@ -63,18 +63,21 @@ async def _crawl_single_browser(p, start_url: str, browser_type: str, ai_model: 
         await context.close()
         await browser.close()
         
-        # Analyze with AI
         ai_report = []
+        ai_error = None
         if ai_model and api_key:
-            # Trim HTML to avoid massive token limits (keep roughly first 15k chars)
-            ai_report = await analyze_ui(screenshot_path, cleaned_html[:15000], ai_model, api_key)
-        
+            try:
+                ai_report = await analyze_ui(screenshot_path, cleaned_html[:15000], ai_model, api_key)
+            except Exception as ai_exc:
+                ai_error = str(ai_exc)
+
         return {
             "status": "success",
             "browser": browser_type,
             "screenshot": screenshot_path,
             "dom_snippet": cleaned_html[:500],
-            "ai_report": ai_report
+            "ai_report": ai_report,
+            **({"ai_error": ai_error} if ai_error else {}),
         }
     except Exception as e:
         return {
