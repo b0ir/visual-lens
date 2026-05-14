@@ -279,9 +279,13 @@ function App() {
                   ))}
                 </div>
               </div>
-            ) : (
+            ) : result && result.every(r => r.status === 'success') ? (
               <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/50 p-8 rounded-3xl mb-8 flex items-center justify-center">
                 <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">No visual bugs detected. The UI looks great across all tested engines.</p>
+              </div>
+            ) : (
+              <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 p-8 rounded-3xl mb-8 flex items-center justify-center">
+                <p className="text-lg font-bold text-amber-700 dark:text-amber-400">Analysis incomplete — one or more browsers returned errors. Check individual results above.</p>
               </div>
             )}
           </div>
