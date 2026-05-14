@@ -19,6 +19,12 @@ interface Props {
   onTargetBrowserChange: (v: string) => void
 }
 
+function sanitizeApiKey(raw: string): string {
+  const trimmed = raw.trim()
+  const match = trimmed.match(/^[A-Za-z_][A-Za-z0-9_]*=(.+)$/)
+  return match ? match[1].trim() : trimmed
+}
+
 const PROVIDER_ICONS: Record<string, string> = {
   openai: '⬡',
   anthropic: '◆',
@@ -186,7 +192,7 @@ export default function SettingsModal({
                   type={showKey ? 'text' : 'password'}
                   className="w-full p-3 pr-20 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-violet-500"
                   value={apiKey}
-                  onChange={e => { setApiKey(e.target.value); setVerifyStatus('idle') }}
+                  onChange={e => { setApiKey(sanitizeApiKey(e.target.value)); setVerifyStatus('idle') }}
                   placeholder="Paste your API key..."
                 />
                 <button

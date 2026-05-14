@@ -1,6 +1,5 @@
 import base64
 import json
-import os
 from litellm import acompletion
 import logging
 
@@ -50,44 +49,24 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
         ]
 
         logger.info(f"Sending request to {model_name}...")
-        # LiteLLM's nvidia_nim provider requires the env var; the api_key kwarg alone is ignored.
-        # Map each provider prefix to its expected env var and set it for this call.
-        _PROVIDER_ENV = {
-            "nvidia_nim": "NVIDIA_NIM_API_KEY",
-            "openai":     "OPENAI_API_KEY",
-            "anthropic":  "ANTHROPIC_API_KEY",
-            "gemini":     "GEMINI_API_KEY",
-            "groq":       "GROQ_API_KEY",
-        }
-        provider_prefix = model_name.split("/")[0] if "/" in model_name else ""
-        env_key = _PROVIDER_ENV.get(provider_prefix)
-        _prev = os.environ.get(env_key) if env_key else None
-        if env_key and api_key:
-            os.environ[env_key] = api_key
-        try:
-            response = await acompletion(
-                model=model_name,
-                messages=messages,
-                temperature=0.1,
-                api_key=api_key,
-            )
-        finally:
-            if env_key:
-                if _prev is None:
-                    os.environ.pop(env_key, None)
-                else:
-                    os.environ[env_key] = _prev
+        response = await acompletion(
+            model=model_name,
+            messages=messages,
+            temperature=0.1,
+            api_key=api_key,
+        )
 
-        content = response.choices[0].message.content.strip()
+        content = (response.choices[0].message.content or "").strip()
         logger.info(f"AI Response received.")
 
-        # Clean up markdown formatting if the AI ignores the system prompt
         if content.startswith("```json"):
             content = content[7:-3]
         elif content.startswith("```"):
             content = content[3:-3]
-
-        return json.loads(content.strip())
+        content = content.strip()
+        if not content:
+            return []
+        return json.loads(content)
     except Exception as e:
         error_msg = str(e)
         logger.error(f"AI Analysis failed: {error_msg}")
