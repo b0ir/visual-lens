@@ -1,8 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 from typing import Optional
+import json
 import crawler
 import os
 from providers import get_providers_catalog, verify_api_key
@@ -89,6 +91,24 @@ async def start_crawl(req: CrawlRequest):
         req.url, req.max_pages, req.target_browser, req.model_id, req.api_key
     )
     return result
+
+@app.post("/api/crawl/stream")
+async def stream_crawl(req: CrawlRequest):
+    async def event_generator():
+        try:
+            async for result in crawler.stream_headless_crawler(
+                req.url, req.max_pages, req.target_browser, req.model_id, req.api_key
+            ):
+                yield f"data: {json.dumps(result)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'status': 'error', 'browser': 'unknown', 'error': str(e)})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 if __name__ == "__main__":
     import uvicorn

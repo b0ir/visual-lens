@@ -89,7 +89,22 @@ async def run_headless_crawler(start_url: str, max_pages: int, target_browser: s
             browsers = ["chromium", "firefox", "webkit"]
         else:
             browsers = [target_browser.lower()]
-            
+
         tasks = [_crawl_single_browser(p, start_url, b, ai_model, api_key) for b in browsers]
         results = await asyncio.gather(*tasks)
         return {"status": "success", "results": results}
+
+async def stream_headless_crawler(start_url: str, max_pages: int, target_browser: str, ai_model: str, api_key: str):
+    """Async generator — yields each browser result as soon as it completes."""
+    async with async_playwright() as p:
+        browsers = ["chromium", "firefox", "webkit"] if target_browser.lower() == "all" else [target_browser.lower()]
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def crawl_and_enqueue(browser_type: str):
+            result = await _crawl_single_browser(p, start_url, browser_type, ai_model, api_key)
+            await queue.put(result)
+
+        tasks = [asyncio.create_task(crawl_and_enqueue(b)) for b in browsers]
+        for _ in browsers:
+            yield await queue.get()
+        await asyncio.gather(*tasks, return_exceptions=True)

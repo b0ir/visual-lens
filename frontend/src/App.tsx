@@ -63,6 +63,14 @@ function App() {
 
   const isConfigured = !!(activeProvider && activeApiKey && activeModel)
 
+  const expectedBrowsers = targetBrowser === 'all'
+    ? ['chromium', 'firefox', 'webkit']
+    : [targetBrowser]
+  const completedBrowserNames = new Set(result?.map(r => r.browser) ?? [])
+  const pendingBrowsers = isProcessing
+    ? expectedBrowsers.filter(b => !completedBrowserNames.has(b))
+    : []
+
   const getNativeBrowserType = () => {
     const ua = navigator.userAgent.toLowerCase()
     if (ua.includes('firefox')) return 'firefox'
@@ -90,10 +98,9 @@ function App() {
         if (d.status !== 'success') throw new Error('Authentication failed or was cancelled.')
       }
 
-      const browserLabel = targetBrowser === 'all' ? 'Chromium, Firefox, and WebKit' : targetBrowser
-      setStatusMessage(`Running automated analysis on ${browserLabel}...`)
+      setStatusMessage('Starting browsers...')
 
-      const res = await fetch(`${API_BASE}/api/crawl/start`, {
+      const res = await fetch(`${API_BASE}/api/crawl/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -105,8 +112,31 @@ function App() {
           model_id: activeModel,
         }),
       })
-      const data = await res.json()
-      setResult(data.results)
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as { detail?: string }).detail || `HTTP ${res.status}`)
+      }
+
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      setResult([])
+
+      outer: while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop() ?? ''
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue
+          const payload = part.slice(6).trim()
+          if (payload === '[DONE]') break outer
+          const browserResult = JSON.parse(payload) as CrawlResult
+          setResult(prev => [...(prev ?? []), browserResult])
+        }
+      }
     } catch (e: unknown) {
       alert(`Error: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
@@ -197,8 +227,8 @@ function App() {
           </button>
         </div>
 
-        {/* Loading overlay */}
-        {isProcessing && statusMessage && (
+        {/* Loading overlay — shown only before first result streams in */}
+        {isProcessing && (!result || result.length === 0) && (
           <div className="fixed inset-0 bg-zinc-900/60 dark:bg-black/80 backdrop-blur-md flex items-center justify-center z-50">
             <div className="bg-white dark:bg-zinc-900 p-10 rounded-3xl shadow-2xl max-w-md w-full text-center border border-zinc-200 dark:border-zinc-800">
               <Loader2 className="animate-spin w-12 h-12 text-violet-600 dark:text-violet-500 mx-auto mb-6" />
@@ -222,10 +252,17 @@ function App() {
         )}
 
         {/* Results */}
-        {result && (
+        {result !== null && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight">Crawl Results</h2>
-            <div className={`grid grid-cols-1 ${result.length > 1 ? 'md:grid-cols-3' : 'max-w-md'} gap-6`}>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight">Crawl Results</h2>
+              {isProcessing && (
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/50 px-3 py-1 rounded-full">
+                  <Loader2 size={12} className="animate-spin" /> {completedBrowserNames.size}/{expectedBrowsers.length} done
+                </span>
+              )}
+            </div>
+            <div className={`grid grid-cols-1 ${(result.length + pendingBrowsers.length) > 1 ? 'md:grid-cols-3' : 'max-w-md'} gap-6`}>
               {result.map((res, idx) => (
                 <div key={idx} className="bg-white dark:bg-zinc-900/80 p-5 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 transition-colors backdrop-blur-xl flex flex-col">
                   <div className="flex items-center justify-between mb-5">
@@ -246,9 +283,24 @@ function App() {
                   </div>
                 </div>
               ))}
+              {pendingBrowsers.map(b => (
+                <div key={`pending-${b}`} className="bg-white dark:bg-zinc-900/80 p-5 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 backdrop-blur-xl flex flex-col">
+                  <div className="flex items-center justify-between mb-5">
+                    <span className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold rounded-full capitalize">
+                      {b === 'webkit' ? 'Safari' : b}
+                    </span>
+                    <Loader2 size={16} className="animate-spin text-violet-400" />
+                  </div>
+                  <div className="flex-1 flex flex-col gap-3 animate-pulse">
+                    <div className="h-40 bg-zinc-100 dark:bg-zinc-800/60 rounded-2xl" />
+                    <div className="h-3 bg-zinc-100 dark:bg-zinc-800/60 rounded w-3/4" />
+                    <div className="h-3 bg-zinc-100 dark:bg-zinc-800/60 rounded w-1/2" />
+                  </div>
+                </div>
+              ))}
             </div>
 
-            {aggregatedBugs.length > 0 ? (
+            {!isProcessing && aggregatedBugs.length > 0 ? (
               <div className="bg-violet-50/50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/50 p-8 rounded-3xl mb-8">
                 <h3 className="text-2xl font-extrabold text-violet-900 dark:text-violet-300 mb-6 flex items-center gap-3">
                   <Bug className="text-violet-600 dark:text-violet-400" /> Detected Visual Bugs
@@ -279,15 +331,15 @@ function App() {
                   ))}
                 </div>
               </div>
-            ) : result && result.every(r => r.status === 'success') ? (
+            ) : !isProcessing && result && result.every(r => r.status === 'success') ? (
               <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/50 p-8 rounded-3xl mb-8 flex items-center justify-center">
                 <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">No visual bugs detected. The UI looks great across all tested engines.</p>
               </div>
-            ) : (
+            ) : !isProcessing ? (
               <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 p-8 rounded-3xl mb-8 flex items-center justify-center">
                 <p className="text-lg font-bold text-amber-700 dark:text-amber-400">Analysis incomplete — one or more browsers returned errors. Check individual results above.</p>
               </div>
-            )}
+            ) : null}
           </div>
         )}
       </div>
