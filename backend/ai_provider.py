@@ -56,16 +56,17 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
             api_key=api_key,
         )
 
-        content = response.choices[0].message.content.strip()
+        content = (response.choices[0].message.content or "").strip()
         logger.info(f"AI Response received.")
 
-        # Clean up markdown formatting if the AI ignores the system prompt
         if content.startswith("```json"):
             content = content[7:-3]
         elif content.startswith("```"):
             content = content[3:-3]
-
-        return json.loads(content.strip())
+        content = content.strip()
+        if not content:
+            return []
+        return json.loads(content)
     except Exception as e:
         error_msg = str(e)
         logger.error(f"AI Analysis failed: {error_msg}")
