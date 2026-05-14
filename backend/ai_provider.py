@@ -68,7 +68,12 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
         content = content.strip()
         if not content:
             return []
-        return json.loads(content)
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            # Model returned non-JSON (thinking text, prose, etc.) — treat as no bugs
+            logger.warning(f"Model returned non-JSON content: {content[:200]!r}")
+            return []
     except Exception as e:
         error_msg = str(e)
         logger.error(f"AI Analysis failed: {error_msg}")
