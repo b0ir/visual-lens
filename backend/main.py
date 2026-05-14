@@ -33,8 +33,9 @@ class AuthRequest(BaseModel):
     @field_validator("url")
     @classmethod
     def url_must_be_http(cls, v: str) -> str:
+        v = v.strip()
         if not v.startswith(("http://", "https://")):
-            raise ValueError("URL must start with http:// or https://")
+            v = f"https://{v}"
         return v
 
 class VerifyKeyRequest(BaseModel):
@@ -52,8 +53,9 @@ class CrawlRequest(BaseModel):
     @field_validator("url")
     @classmethod
     def url_must_be_http(cls, v: str) -> str:
+        v = v.strip()
         if not v.startswith(("http://", "https://")):
-            raise ValueError("URL must start with http:// or https://")
+            v = f"https://{v}"
         return v
 
     @field_validator("max_pages")
