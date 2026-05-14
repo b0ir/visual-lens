@@ -1,0 +1,125 @@
+name: On-Demand AI Review
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  gemini-review:
+    name: Gemini Review (on-demand)
+    # Only run when someone comments `/review` on a pull request
+    if: |
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/review')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
+
+      # React to the comment so the requester gets immediate feedback
+      - name: Acknowledge trigger
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes',
+            });
+
+      - name: Review with Qwen and post comment
+        env:
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          GH_TOKEN:           ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER:          ${{ github.event.issue.number }}
+        run: |
+          python3 - <<'PYEOF'
+          import os, json, urllib.request, subprocess, sys
+
+          api_key = os.environ.get("NVIDIA_NIM_API_KEY", "")
+          pr_num  = os.environ["PR_NUMBER"]
+
+          if not api_key:
+              print("NVIDIA_NIM_API_KEY not set — skipping AI review")
+              sys.exit(0)
+
+          # Fetch PR metadata
+          meta_raw = subprocess.run(
+              ["gh", "pr", "view", pr_num, "--json", "title,body"],
+              capture_output=True, text=True
+          ).stdout
+          meta     = json.loads(meta_raw) if meta_raw.strip() else {}
+          pr_title = meta.get("title", "")
+          pr_body  = meta.get("body", "") or ""
+
+          # Get diff (cap at 12 000 chars to stay within token budget)
+          diff_raw = subprocess.run(
+              ["gh", "pr", "diff", pr_num],
+              capture_output=True, text=True
+          ).stdout
+          diff = diff_raw[:12000]
+          if not diff.strip():
+              print("Empty diff — skipping AI review")
+              sys.exit(0)
+
+          prompt = f"""You are a senior software engineer reviewing a pull request.
+          Analyze the diff and provide a concise review covering:
+          1. **Summary** — what the PR does
+          2. **Bugs / logic errors** — anything that looks broken
+          3. **Security concerns** — if any
+          4. **Code quality** — notable issues only, skip style nits
+          5. **Verdict** — one of: ✅ Looks good | ⚠️ Minor issues | ❌ Needs work
+
+          Be specific and actionable. Format in Markdown.
+
+          **PR Title:** {pr_title}
+          **PR Description:** {pr_body}
+
+          **Diff** (may be truncated):
+          ```diff
+          {diff}
+          ```"""
+
+          payload = {
+              "model": "qwen/qwen3-coder-480b-a35b-instruct",
+              "messages": [{"role": "user", "content": prompt}],
+              "temperature": 0.2,
+              "max_tokens": 1024,
+          }
+
+          req = urllib.request.Request(
+              "https://integrate.api.nvidia.com/v1/chat/completions",
+              data=json.dumps(payload).encode(),
+              headers={
+                  "Content-Type": "application/json",
+                  "Authorization": f"Bearer {api_key}",
+              },
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=60) as resp:
+                  data = json.loads(resp.read())
+              review = data["choices"][0]["message"]["content"]
+          except Exception as e:
+              print(f"NIM API error: {e}")
+              sys.exit(0)
+
+          comment = (
+              "## AI Code Review 🤖\n\n"
+              + review
+              + "\n\n---\n"
+              + "*Triggered on-demand via `/review` · Powered by Qwen3-Coder 480B via NVIDIA NIM*"
+          )
+
+          subprocess.run(
+              ["gh", "pr", "comment", pr_num, "--body", comment],
+              check=True
+          )
+          print("Review comment posted.")
+          PYEOF

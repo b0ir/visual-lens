@@ -1,8 +1,7 @@
-fastapi
-uvicorn
-playwright
-sqlalchemy
-python-dotenv
-litellm
-pydantic
-httpx
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+playwright>=1.49.0
+python-dotenv>=1.0.0
+litellm>=1.56.0
+pydantic>=2.10.0
+httpx>=0.28.0
