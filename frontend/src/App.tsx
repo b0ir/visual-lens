@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Play, Loader2, Info, Sun, Moon, Bug, Lightbulb, Code } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Play, Loader2, Info, Sun, Moon, Bug, Lightbulb, Code, X } from 'lucide-react'
 import SettingsModal from './SettingsModal'
 import { API_BASE } from './lib/api'
 
@@ -17,11 +17,18 @@ interface CrawlResult {
   ai_report?: BugReport[]
 }
 
+function browserLabel(b: string): string {
+  if (b === 'webkit') return 'Safari'
+  if (b === 'unknown') return 'Error'
+  return b.charAt(0).toUpperCase() + b.slice(1)
+}
+
 function App() {
   const [url, setUrl] = useState('')
   const [needsAuth, setNeedsAuth] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [statusMessage, setStatusMessage] = useState('')
+  const abortRef = useRef<AbortController | null>(null)
   const [result, setResult] = useState<CrawlResult[] | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [targetBrowser, setTargetBrowser] = useState('all')
@@ -78,10 +85,18 @@ function App() {
     return 'chromium'
   }
 
+  const handleCancel = () => {
+    abortRef.current?.abort()
+    setIsProcessing(false)
+    setStatusMessage('')
+  }
+
   const handleAnalyze = async () => {
     if (!url) return alert('Please enter a URL first')
     if (!isConfigured) return alert('Please configure your AI provider in Settings first.')
 
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
     setIsProcessing(true)
     setResult(null)
 
@@ -93,6 +108,7 @@ function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url, browser_type: browserType }),
+          signal: ctrl.signal,
         })
         const d = await r.json()
         if (d.status !== 'success') throw new Error('Authentication failed or was cancelled.')
@@ -111,6 +127,7 @@ function App() {
           api_key: activeApiKey,
           model_id: activeModel,
         }),
+        signal: ctrl.signal,
       })
 
       if (!res.ok) {
@@ -138,6 +155,7 @@ function App() {
         }
       }
     } catch (e: unknown) {
+      if (e instanceof Error && e.name === 'AbortError') return
       alert(`Error: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setIsProcessing(false)
@@ -233,7 +251,13 @@ function App() {
             <div className="bg-white dark:bg-zinc-900 p-10 rounded-3xl shadow-2xl max-w-md w-full text-center border border-zinc-200 dark:border-zinc-800">
               <Loader2 className="animate-spin w-12 h-12 text-violet-600 dark:text-violet-500 mx-auto mb-6" />
               <h3 className="text-2xl font-bold text-zinc-900 dark:text-white mb-2 tracking-tight">Analyzing...</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 font-medium">{statusMessage}</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 font-medium mb-6">{statusMessage}</p>
+              <button
+                onClick={handleCancel}
+                className="flex items-center gap-2 mx-auto text-sm font-semibold text-zinc-400 hover:text-rose-500 dark:hover:text-rose-400 transition"
+              >
+                <X size={15} /> Cancel
+              </button>
             </div>
           </div>
         )}
@@ -257,17 +281,25 @@ function App() {
             <div className="flex items-center gap-3">
               <h2 className="text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight">Crawl Results</h2>
               {isProcessing && (
-                <span className="flex items-center gap-1.5 text-xs font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/50 px-3 py-1 rounded-full">
-                  <Loader2 size={12} className="animate-spin" /> {completedBrowserNames.size}/{expectedBrowsers.length} done
-                </span>
+                <>
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/50 px-3 py-1 rounded-full">
+                    <Loader2 size={12} className="animate-spin" /> {completedBrowserNames.size}/{expectedBrowsers.length} done
+                  </span>
+                  <button
+                    onClick={handleCancel}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-rose-500 dark:hover:text-rose-400 transition"
+                  >
+                    <X size={13} /> Cancel
+                  </button>
+                </>
               )}
             </div>
             <div className={`grid grid-cols-1 ${(result.length + pendingBrowsers.length) > 1 ? 'md:grid-cols-3' : 'max-w-md'} gap-6`}>
               {result.map((res, idx) => (
                 <div key={idx} className="bg-white dark:bg-zinc-900/80 p-5 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 transition-colors backdrop-blur-xl flex flex-col">
                   <div className="flex items-center justify-between mb-5">
-                    <span className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold rounded-full capitalize">
-                      {res.browser === 'webkit' ? 'Safari' : res.browser}
+                    <span className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold rounded-full">
+                      {browserLabel(res.browser)}
                     </span>
                     {res.status === 'success'
                       ? <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-full border border-emerald-200 dark:border-emerald-800/50">SUCCESS</span>
@@ -286,8 +318,8 @@ function App() {
               {pendingBrowsers.map(b => (
                 <div key={`pending-${b}`} className="bg-white dark:bg-zinc-900/80 p-5 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 backdrop-blur-xl flex flex-col">
                   <div className="flex items-center justify-between mb-5">
-                    <span className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold rounded-full capitalize">
-                      {b === 'webkit' ? 'Safari' : b}
+                    <span className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold rounded-full">
+                      {browserLabel(b)}
                     </span>
                     <Loader2 size={16} className="animate-spin text-violet-400" />
                   </div>
@@ -322,7 +354,7 @@ function App() {
                         <div className="flex gap-2 flex-wrap justify-center">
                           {bug.browsers.map((b: string) => (
                             <span key={b} className="px-3 py-1 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-xs font-bold rounded-full capitalize border border-violet-200 dark:border-violet-800/50">
-                              {b === 'webkit' ? 'Safari' : b}
+                              {browserLabel(b)}
                             </span>
                           ))}
                         </div>

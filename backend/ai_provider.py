@@ -54,6 +54,8 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
             messages=messages,
             temperature=0.1,
             api_key=api_key,
+            num_retries=0,
+            timeout=60,
         )
 
         content = (response.choices[0].message.content or "").strip()
