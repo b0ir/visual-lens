@@ -28,7 +28,11 @@ def _check_ssrf(url: str) -> None:
         # host is a domain name, not an IP literal — allow
 
 
-app = FastAPI(title="VisualLens API", description="AI-powered Visual Regression Testing Agent")
+app = FastAPI(
+    title="VisualLens API",
+    description="AI-powered Visual Regression Testing Agent",
+    version="0.1.0",
+)
 
 _allowed_origins_raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000")
 _allowed_origins = [o.strip() for o in _allowed_origins_raw.split(",") if o.strip()]
@@ -40,6 +44,15 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
 
 os.makedirs("static/screenshots", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
