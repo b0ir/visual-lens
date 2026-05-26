@@ -1,16 +1,32 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 from typing import Optional
+import ipaddress
 import json
 import crawler
 import os
+from urllib.parse import urlparse
 from providers import get_providers_catalog, verify_api_key
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _check_ssrf(url: str) -> None:
+    """Raise ValueError if the URL resolves to a private or reserved IP literal."""
+    host = urlparse(url).hostname or ""
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+            raise ValueError("Requests to private or reserved addresses are not allowed")
+    except ValueError as exc:
+        if "not allowed" in str(exc):
+            raise
+        # host is a domain name, not an IP literal — allow
+
 
 app = FastAPI(title="VisualLens API", description="AI-powered Visual Regression Testing Agent")
 
@@ -38,6 +54,7 @@ class AuthRequest(BaseModel):
         v = v.strip()
         if not v.startswith(("http://", "https://")):
             v = f"https://{v}"
+        _check_ssrf(v)
         return v
 
 class VerifyKeyRequest(BaseModel):
@@ -58,6 +75,7 @@ class CrawlRequest(BaseModel):
         v = v.strip()
         if not v.startswith(("http://", "https://")):
             v = f"https://{v}"
+        _check_ssrf(v)
         return v
 
     @field_validator("max_pages")
