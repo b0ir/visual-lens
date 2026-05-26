@@ -1,8 +1,13 @@
 # Python
 backend/venv/
 backend/__pycache__/
+backend/.pytest_cache/
 *.pyc
 backend/.env
+
+# Credentials / certificates
+**/*.pem
+**/*.key
 
 # Node
 frontend/node_modules/
