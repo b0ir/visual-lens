@@ -12,6 +12,33 @@ VisualLens is an autonomous, AI-powered visual regression and UI testing agent. 
 - **Auth support** — for pages behind login, opens an interactive browser window for manual login before crawling.
 - **Dark mode**.
 
+## Architecture
+
+```
+┌─────────────────────┐        ┌──────────────────────────────────┐
+│  Frontend           │  HTTP  │  Backend (FastAPI)               │
+│  React 19 + Vite    │ ──────▶│                                  │
+│  localhost:3000     │  SSE   │  POST /api/crawl/stream          │
+└─────────────────────┘        │  POST /api/auth/start            │
+                               │  GET  /api/providers             │
+                               └──────────────┬───────────────────┘
+                                              │ Playwright (async)
+                               ┌──────────────┼──────────────┐
+                               ▼              ▼              ▼
+                          Chromium        Firefox         WebKit
+                               └──────────────┼──────────────┘
+                                              │ screenshot + DOM
+                                              ▼
+                               ┌──────────────────────────┐
+                               │  Vision LLM (via litellm)│
+                               │                          │
+                               │  OpenAI · Anthropic      │
+                               │  Gemini · DeepSeek · xAI │
+                               └──────────────────────────┘
+```
+
+The frontend streams results over SSE as each browser completes — no waiting for all three to finish.
+
 ## Repository Structure
 
 Polyglot Monorepo managed by a root `package.json`.
