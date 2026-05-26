@@ -35,6 +35,9 @@ jobs:
       - name: Lint
         run: cd frontend && npm run lint
 
+      - name: Audit dependencies
+        run: cd frontend && npm audit --audit-level=moderate
+
       - name: Build (includes tsc type-check)
         run: cd frontend && npm run build
 
@@ -48,8 +51,11 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install ruff
-        run: pip install ruff
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt ruff
+
+      - name: Check dependency compatibility
+        run: pip check
 
       - name: Lint
         run: ruff check --select=E9,F63,F7,F82 backend/
