@@ -1,11 +1,15 @@
 import asyncio
-from playwright.async_api import async_playwright
+import time
+from typing import Any, AsyncGenerator
+from playwright.async_api import async_playwright, Playwright, BrowserType
 import os
 from ai_provider import analyze_ui
 
 AUTH_FILE = "auth.json"
 
-def get_browser_engine(p, browser_type: str):
+
+def get_browser_engine(p: Playwright, browser_type: str) -> BrowserType:
+    """Return the Playwright BrowserType matching the requested engine name."""
     if browser_type.lower() == "firefox":
         return p.firefox
     elif browser_type.lower() in ["webkit", "safari"]:
@@ -13,9 +17,12 @@ def get_browser_engine(p, browser_type: str):
     else:
         return p.chromium
 
+
 LOGIN_TIMEOUT_SECONDS = int(os.environ.get("LOGIN_TIMEOUT_SECONDS", "300"))
 
-async def launch_interactive_login(url: str, browser_type: str = "chromium"):
+
+async def launch_interactive_login(url: str, browser_type: str = "chromium") -> dict[str, str]:
+    """Open a headed browser for manual login and save the auth state to disk."""
     async with async_playwright() as p:
         engine = get_browser_engine(p, browser_type)
         browser = await engine.launch(headless=False)
@@ -34,37 +41,43 @@ async def launch_interactive_login(url: str, browser_type: str = "chromium"):
         await context.storage_state(path=AUTH_FILE)
         return {"status": "success", "message": "Authentication saved successfully."}
 
-async def _crawl_single_browser(p, start_url: str, browser_type: str, ai_model: str, api_key: str):
+
+async def _crawl_single_browser(
+    p: Playwright,
+    start_url: str,
+    browser_type: str,
+    ai_model: str,
+    api_key: str,
+) -> dict[str, Any]:
+    """Capture a screenshot and run AI analysis for one browser engine."""
     engine = get_browser_engine(p, browser_type)
     try:
+        browser = await engine.launch(headless=True)
         if os.path.exists(AUTH_FILE):
-            browser = await engine.launch(headless=True)
             context = await browser.new_context(storage_state=AUTH_FILE)
         else:
-            browser = await engine.launch(headless=True)
             context = await browser.new_context()
-            
+
         page = await context.new_page()
-        import time
         timestamp = int(time.time())
         await page.goto(start_url, wait_until="networkidle")
-        
+
         os.makedirs("static/screenshots", exist_ok=True)
         screenshot_path = f"static/screenshots/home_{browser_type}_{timestamp}.png"
         await page.screenshot(path=screenshot_path, full_page=True)
-        
-        cleaned_html = await page.evaluate('''() => {
+
+        cleaned_html: str = await page.evaluate('''() => {
             const clone = document.documentElement.cloneNode(true);
             const elementsToRemove = clone.querySelectorAll('script, style, svg, path, link, meta, noscript');
             elementsToRemove.forEach(el => el.remove());
             return clone.innerHTML;
         }''')
-        
+
         await context.close()
         await browser.close()
-        
-        ai_report = []
-        ai_error = None
+
+        ai_report: list[Any] = []
+        ai_error: str | None = None
         if ai_model and api_key:
             try:
                 ai_report = await analyze_ui(screenshot_path, cleaned_html[:15000], ai_model, api_key)
@@ -83,27 +96,46 @@ async def _crawl_single_browser(p, start_url: str, browser_type: str, ai_model: 
         return {
             "status": "error",
             "browser": browser_type,
-            "error": str(e)
+            "error": str(e),
         }
 
-async def run_headless_crawler(start_url: str, max_pages: int, target_browser: str, ai_model: str, api_key: str):
-    async with async_playwright() as p:
-        if target_browser.lower() == "all":
-            browsers = ["chromium", "firefox", "webkit"]
-        else:
-            browsers = [target_browser.lower()]
 
+async def run_headless_crawler(
+    start_url: str,
+    max_pages: int,
+    target_browser: str,
+    ai_model: str,
+    api_key: str,
+) -> dict[str, Any]:
+    """Crawl start_url across the requested browser(s) and return all results."""
+    async with async_playwright() as p:
+        browsers = (
+            ["chromium", "firefox", "webkit"]
+            if target_browser.lower() == "all"
+            else [target_browser.lower()]
+        )
         tasks = [_crawl_single_browser(p, start_url, b, ai_model, api_key) for b in browsers]
         results = await asyncio.gather(*tasks)
         return {"status": "success", "results": results}
 
-async def stream_headless_crawler(start_url: str, max_pages: int, target_browser: str, ai_model: str, api_key: str):
-    """Async generator — yields each browser result as soon as it completes."""
-    async with async_playwright() as p:
-        browsers = ["chromium", "firefox", "webkit"] if target_browser.lower() == "all" else [target_browser.lower()]
-        queue: asyncio.Queue = asyncio.Queue()
 
-        async def crawl_and_enqueue(browser_type: str):
+async def stream_headless_crawler(
+    start_url: str,
+    max_pages: int,
+    target_browser: str,
+    ai_model: str,
+    api_key: str,
+) -> AsyncGenerator[dict[str, Any], None]:
+    """Yield each browser result as soon as it completes rather than waiting for all."""
+    async with async_playwright() as p:
+        browsers = (
+            ["chromium", "firefox", "webkit"]
+            if target_browser.lower() == "all"
+            else [target_browser.lower()]
+        )
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+        async def crawl_and_enqueue(browser_type: str) -> None:
             result = await _crawl_single_browser(p, start_url, browser_type, ai_model, api_key)
             await queue.put(result)
 
