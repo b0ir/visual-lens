@@ -27,19 +27,19 @@ jobs:
         with:
           node-version: 20.x
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: cd frontend && npm ci
+        run: npm ci
 
       - name: Lint
-        run: cd frontend && npm run lint
+        run: npm run lint --workspace=frontend
 
       - name: Audit dependencies
-        run: cd frontend && npm audit --audit-level=moderate
+        run: npm audit --audit-level=moderate --workspace=frontend
 
       - name: Build (includes tsc type-check)
-        run: cd frontend && npm run build
+        run: npm run build --workspace=frontend
 
   backend:
     name: Backend lint (ruff)
