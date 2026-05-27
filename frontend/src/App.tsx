@@ -309,12 +309,6 @@ function App() {
                   {res.screenshot && <img src={`${API_BASE}/${res.screenshot}`} alt={`${res.browser} screenshot`} className="w-full h-auto rounded-2xl border border-zinc-200 dark:border-zinc-700 mb-5 object-cover" />}
                   {res.error && <div className="text-sm font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 p-4 rounded-2xl mb-5 border border-rose-100 dark:border-rose-900/50">{res.error}</div>}
                   {res.ai_error && <div className="text-sm font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-4 rounded-2xl mb-5 border border-amber-100 dark:border-amber-900/50">AI analysis failed: {res.ai_error}</div>}
-                  <div className="mt-auto pt-4">
-                    <p className="text-xs font-bold text-zinc-500 mb-2">RAW AI OUTPUT (Debug)</p>
-                    <div className="bg-zinc-950 text-emerald-400 p-4 rounded-2xl overflow-y-auto text-xs h-32 border border-zinc-800 font-mono shadow-inner">
-                      <pre>{res.ai_report ? JSON.stringify(res.ai_report, null, 2) : 'No AI report.'}</pre>
-                    </div>
-                  </div>
                 </div>
               ))}
               {pendingBrowsers.map(b => (
