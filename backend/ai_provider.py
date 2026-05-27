@@ -20,6 +20,11 @@ Your goal is to find visual bugs, such as overlapping text, broken elements, con
 IMPORTANT: Your response must start with [ and end with ]. Output the JSON array and nothing else.
 No explanations, no markdown, no code fences, no introductory text. Just the raw JSON array.
 
+Description rules — follow these exactly:
+- Focus on the element and the visual symptom: "[Element] [symptom]" (e.g., "Logo not centered in header", "Search bar hidden on narrow viewports")
+- Do NOT vary phrasing based on browser or viewport terminology — use the same wording you would use regardless of which browser rendered the page
+- No trailing punctuation. No introductory words like "The" at the start.
+
 Format exactly like this:
 [
   {
