@@ -17,7 +17,9 @@ SYSTEM_PROMPT = """
 You are an Expert UX/UI QA Engineer. Analyze the provided web page screenshot and its corresponding simplified HTML DOM.
 Your goal is to find visual bugs, such as overlapping text, broken elements, contrast issues, or layout shifts.
 
-You MUST return ONLY a valid JSON array of objects. Do not include markdown formatting like ```json.
+IMPORTANT: Your response must start with [ and end with ]. Output the JSON array and nothing else.
+No explanations, no markdown, no code fences, no introductory text. Just the raw JSON array.
+
 Format exactly like this:
 [
   {
@@ -73,7 +75,13 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
         try:
             return json.loads(content)
         except json.JSONDecodeError:
-            # Model returned non-JSON (thinking text, prose, etc.) — treat as no bugs
+            # Some models prepend prose before the JSON array — try to find and extract it
+            start = content.find('[')
+            if start != -1:
+                try:
+                    return json.loads(content[start:])
+                except json.JSONDecodeError:
+                    pass
             logger.warning(f"Model returned non-JSON content: {content[:200]!r}")
             return []
     except Exception as e:
