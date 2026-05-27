@@ -1,8 +1,8 @@
-# VisualLens (Work In Progress)
+# VisualLens
 
 [![CI](https://github.com/b0ir/visual-lens/actions/workflows/ci.yml/badge.svg)](https://github.com/b0ir/visual-lens/actions/workflows/ci.yml)
 
-VisualLens is an autonomous, AI-powered visual regression and UI testing agent. It crawls web pages, captures screenshots across multiple rendering engines (Chromium, Firefox, WebKit) concurrently, and uses multimodal vision LLMs to detect UI/UX bugs, broken layouts, and overlapping elements.
+An autonomous, AI-powered visual regression and UI testing agent. It crawls web pages, captures screenshots across multiple rendering engines (Chromium, Firefox, Safari (WebKit)) concurrently, and uses multimodal vision LLMs to detect UI/UX bugs, broken layouts, and overlapping elements.
 
 ## Features
 
@@ -17,7 +17,7 @@ VisualLens is an autonomous, AI-powered visual regression and UI testing agent. 
 ```
 ┌─────────────────────┐        ┌──────────────────────────────────┐
 │  Frontend           │  HTTP  │  Backend (FastAPI)               │
-│  React 19 + Vite    │ ──────▶│                                  │
+│  React + Vite       │ ──────▶│                                  │
 │  localhost:3000     │  SSE   │  POST /api/crawl/stream          │
 └─────────────────────┘        │  POST /api/auth/start            │
                                │  GET  /api/providers             │
