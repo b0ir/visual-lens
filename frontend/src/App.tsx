@@ -164,16 +164,19 @@ function App() {
     }
   }
 
+  const normalizeDesc = (s: string) => s.toLowerCase().trim().replace(/[.!?,]+$/, '')
+
   const getAggregatedBugs = () => {
     if (!result) return []
     const bugMap: Record<string, { desc: string; solution: string; element: string; browsers: string[] }> = {}
     result.forEach((res) => {
       if (res.ai_report && Array.isArray(res.ai_report)) {
         res.ai_report.forEach((bug) => {
-          if (!bugMap[bug.description]) {
-            bugMap[bug.description] = { desc: bug.description, solution: bug.suggested_solution, element: bug.element_selector, browsers: [res.browser] }
-          } else if (!bugMap[bug.description].browsers.includes(res.browser)) {
-            bugMap[bug.description].browsers.push(res.browser)
+          const key = normalizeDesc(bug.description)
+          if (!bugMap[key]) {
+            bugMap[key] = { desc: bug.description, solution: bug.suggested_solution, element: bug.element_selector, browsers: [res.browser] }
+          } else if (!bugMap[key].browsers.includes(res.browser)) {
+            bugMap[key].browsers.push(res.browser)
           }
         })
       }
