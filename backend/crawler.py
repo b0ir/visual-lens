@@ -18,7 +18,7 @@ def get_browser_engine(p: Playwright, browser_type: str) -> BrowserType:
         return p.chromium
 
 
-LOGIN_TIMEOUT_SECONDS = int(os.environ.get("LOGIN_TIMEOUT_SECONDS", "300"))
+LOGIN_TIMEOUT_SECONDS = int(os.environ.get("LOGIN_TIMEOUT_SECONDS", "300"))  # 5-minute default; enough for manual login flows
 
 
 async def launch_interactive_login(url: str, browser_type: str = "chromium") -> dict[str, str]:
@@ -76,7 +76,7 @@ async def _crawl_single_browser(
         await context.close()
         await browser.close()
 
-        ai_report: list[Any] = []
+        ai_report: list[dict[str, Any]] = []
         ai_error: str | None = None
         if ai_model and api_key:
             try:
