@@ -1,5 +1,6 @@
 import base64
 import json
+from typing import Any
 from litellm import acompletion
 import logging
 
@@ -7,7 +8,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def encode_image(image_path: str):
+def encode_image(image_path: str) -> str:
+    """Return a base64-encoded string of the image at the given path."""
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode('utf-8')
 
@@ -27,7 +29,7 @@ Format exactly like this:
 If there are absolutely no bugs, return an empty array: []
 """
 
-async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: str):
+async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: str) -> list[dict[str, Any]]:
     """
     Analyze a UI screenshot using a vision-capable LLM.
 
