@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/b0ir/visual-lens/actions/workflows/ci.yml/badge.svg)](https://github.com/b0ir/visual-lens/actions/workflows/ci.yml)
 
-VisualLens is an autonomous, AI-powered visual regression and UI testing agent. It crawls web pages, captures screenshots across multiple rendering engines (Chromium, Firefox, WebKit) concurrently, and uses multimodal vision LLMs to detect UI/UX bugs, broken layouts, and overlapping elements.
+An autonomous, AI-powered visual regression and UI testing agent. It crawls web pages, captures screenshots across multiple rendering engines (Chromium, Firefox, Safari (WebKit)) concurrently, and uses multimodal vision LLMs to detect UI/UX bugs, broken layouts, and overlapping elements.
 
 ## Features
 
