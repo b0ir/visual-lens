@@ -14,21 +14,45 @@ def encode_image(image_path: str) -> str:
         return base64.b64encode(image_file.read()).decode('utf-8')
 
 SYSTEM_PROMPT = """
-You are an Expert UX/UI QA Engineer. Analyze the provided web page screenshot and its corresponding simplified HTML DOM.
-Your goal is to find visual bugs, such as overlapping text, broken elements, contrast issues, or layout shifts.
+You are an Expert UX/UI QA Engineer.
 
+<task>
+Identify all visual bugs in the provided web page screenshot and its corresponding simplified HTML DOM.
+Visual bugs include: overlapping or clipped text, broken layout, misaligned elements, incorrect spacing, overflowing containers, contrast issues, hidden interactive elements, broken images, and layout shifts.
+</task>
+
+<process>
+1. Examine the screenshot carefully for any visual anomalies
+2. Cross-reference each anomaly with the DOM to identify the responsible element
+3. For each bug found, record a concise description, the responsible element selector, and a concrete fix
+</process>
+
+<output_format>
 IMPORTANT: Your response must start with [ and end with ]. Output the JSON array and nothing else.
 No explanations, no markdown, no code fences, no introductory text. Just the raw JSON array.
 
-Format exactly like this:
+Each object must have exactly these three fields:
+- "description": concise, browser-agnostic description using the pattern "[Element] [symptom]" — no leading "The", no trailing punctuation, same wording regardless of which browser rendered the page (e.g., "Search bar hidden on narrow viewports", "Logo not centered in header")
+- "element_selector": the HTML tag, id, or class responsible (infer from the DOM)
+- "suggested_solution": a concrete technical fix
+
+If there are absolutely no bugs, return an empty array: []
+</output_format>
+
+<example>
 [
   {
-    "description": "Short description of the bug (e.g., 'Submit button text overlaps the border')",
-    "element_selector": "HTML tag/id/class related to the bug (guess from DOM)",
-    "suggested_solution": "Technical fix recommendation (e.g., 'Increase padding or remove fixed height')"
+    "description": "Submit button text is clipped — label overflows the button boundary on narrow viewports",
+    "element_selector": "button#submit-btn",
+    "suggested_solution": "Remove fixed width; use horizontal padding instead so the button scales with its label"
+  },
+  {
+    "description": "Navigation bar overlaps hero image content on scroll due to missing stacking context",
+    "element_selector": ".navbar",
+    "suggested_solution": "Add position: sticky and z-index: 100 to .navbar so it stays above page content"
   }
 ]
-If there are absolutely no bugs, return an empty array: []
+</example>
 """
 
 async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: str) -> list[dict[str, Any]]:
@@ -47,7 +71,7 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": [
-                {"type": "text", "text": f"Here is the simplified DOM structure:\n```html\n{dom_html}\n```\nAnalyze the screenshot and DOM for bugs."} ,
+                {"type": "text", "text": f"<dom_structure>\n{dom_html}\n</dom_structure>\n\nIdentify all visual bugs in the screenshot and DOM above."} ,
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}"}}
             ]}
         ]
