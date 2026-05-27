@@ -32,7 +32,7 @@ IMPORTANT: Your response must start with [ and end with ]. Output the JSON array
 No explanations, no markdown, no code fences, no introductory text. Just the raw JSON array.
 
 Each object must have exactly these three fields:
-- "description": concise description of the visual bug
+- "description": concise, browser-agnostic description using the pattern "[Element] [symptom]" — no leading "The", no trailing punctuation, same wording regardless of which browser rendered the page (e.g., "Search bar hidden on narrow viewports", "Logo not centered in header")
 - "element_selector": the HTML tag, id, or class responsible (infer from the DOM)
 - "suggested_solution": a concrete technical fix
 
