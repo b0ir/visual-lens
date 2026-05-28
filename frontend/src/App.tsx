@@ -24,11 +24,23 @@ function browserLabel(b: string): string {
   return b.charAt(0).toUpperCase() + b.slice(1)
 }
 
+function getErrorMessage(e: unknown, res?: Response): string {
+  if (e instanceof TypeError && e.message.includes('fetch')) {
+    return `Cannot reach the backend at ${API_BASE}. Make sure it is running.`
+  }
+  if (res) {
+    if (res.status === 422) return 'Invalid URL or parameters — check the address and try again.'
+    if (res.status >= 500) return 'The backend encountered an unexpected error. Check the backend logs.'
+  }
+  return e instanceof Error ? e.message : String(e)
+}
+
 function App() {
   const [url, setUrl] = useState('')
   const [needsAuth, setNeedsAuth] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [statusMessage, setStatusMessage] = useState('')
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const [result, setResult] = useState<CrawlResult[] | null>(null)
   const [showSettings, setShowSettings] = useState(false)
@@ -100,6 +112,7 @@ function App() {
     abortRef.current = ctrl
     setIsProcessing(true)
     setResult(null)
+    setAnalysisError(null)
 
     try {
       if (needsAuth) {
@@ -111,6 +124,7 @@ function App() {
           body: JSON.stringify({ url, browser_type: browserType }),
           signal: ctrl.signal,
         })
+        if (!r.ok) throw Object.assign(new Error('Authentication request failed.'), { res: r })
         const d = await r.json()
         if (d.status !== 'success') throw new Error('Authentication failed or was cancelled.')
       }
@@ -133,7 +147,11 @@ function App() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error((err as { detail?: string }).detail || `HTTP ${res.status}`)
+        const detail = (err as { detail?: string | { msg: string }[] }).detail
+        const message = Array.isArray(detail)
+          ? detail.map(d => d.msg).join(', ')
+          : detail || getErrorMessage(null, res)
+        throw new Error(message)
       }
 
       const reader = res.body!.getReader()
@@ -151,13 +169,18 @@ function App() {
           if (!part.startsWith('data: ')) continue
           const payload = part.slice(6).trim()
           if (payload === '[DONE]') break outer
-          const browserResult = JSON.parse(payload) as CrawlResult
-          setResult(prev => [...(prev ?? []), browserResult])
+          try {
+            const browserResult = JSON.parse(payload) as CrawlResult
+            setResult(prev => [...(prev ?? []), browserResult])
+          } catch {
+            // malformed SSE chunk — skip rather than crash
+          }
         }
       }
     } catch (e: unknown) {
       if (e instanceof Error && e.name === 'AbortError') return
-      alert(`Error: ${e instanceof Error ? e.message : String(e)}`)
+      const attached = (e as { res?: Response }).res
+      setAnalysisError(getErrorMessage(e, attached))
     } finally {
       setIsProcessing(false)
       setStatusMessage('')
@@ -248,6 +271,16 @@ function App() {
             {isProcessing ? 'Processing...' : 'Start Analysis'}
           </button>
         </div>
+
+        {/* Error banner */}
+        {analysisError && (
+          <div className="flex items-start gap-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/50 text-rose-700 dark:text-rose-400 p-4 rounded-2xl mb-6">
+            <span className="flex-1 text-sm font-medium">{analysisError}</span>
+            <button onClick={() => setAnalysisError(null)} className="shrink-0 hover:opacity-70 transition" aria-label="Dismiss error">
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
         {/* Loading overlay — shown only before first result streams in */}
         {isProcessing && (!result || result.length === 0) && (
