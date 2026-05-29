@@ -86,6 +86,7 @@ Rules:
 - All commit messages and comments in English
 - Subject line max 72 chars
 - Do not push if the build is failing — run `cd frontend && npm run build` to verify before pushing
+- **If `backend/requirements.txt` was changed**: run `npm run setup:all` from the repo root and confirm it exits with no errors before pushing. CI runs Python 3.12 and will not catch Python 3.14 availability gaps — local validation is mandatory.
 
 ### Push the branch
 
