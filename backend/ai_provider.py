@@ -1,11 +1,16 @@
 import base64
 import json
 from typing import Any
+import litellm
 from litellm import acompletion
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+litellm.suppress_debug_info = True
+litellm.set_verbose = False
+logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 
 
 def encode_image(image_path: str) -> str:
