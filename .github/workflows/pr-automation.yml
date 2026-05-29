@@ -69,7 +69,23 @@ jobs:
             }
 
   # ─────────────────────────────────────────────
-  # 2. Quick checks — lint, type-check, build
+  # 2. Backend deps validation
+  # ─────────────────────────────────────────────
+  backend-deps:
+    name: Backend Deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate pip resolution
+        run: pip install --dry-run -r backend/requirements.txt
+
+  # ─────────────────────────────────────────────
+  # 3. Quick checks — lint, type-check, build
   # ─────────────────────────────────────────────
   quick-checks:
     name: Quick Checks
