@@ -24,17 +24,28 @@ Visual bugs include: overlapping or clipped text, broken layout, misaligned elem
 <process>
 1. Examine the screenshot carefully for any visual anomalies
 2. Cross-reference each anomaly with the DOM to identify the responsible element
-3. For each bug found, record a concise description, the responsible element selector, and a concrete fix
+3. For each bug found, pick the single best symptom keyword from <symptom_vocabulary>, then record the description, selector, and fix
 </process>
+
+<symptom_vocabulary>
+Every description MUST use exactly one of these symptom keywords — no synonyms, no free-form phrasing:
+- hidden      — element is not visible (off-screen, display:none, opacity 0, or fully occluded)
+- clipped     — element or its text is partially cut off, overflowing, or truncated
+- overlapping — element covers or is covered by another element unintentionally
+- misaligned  — element has wrong position, spacing, or size relative to its container or siblings
+- collapsed   — element's layout broke (zero/near-zero height or width, wrapping failure)
+- low-contrast — text or UI element has insufficient color contrast against its background
+- image-broken — image fails to load or renders as a broken placeholder
+</symptom_vocabulary>
 
 <output_format>
 IMPORTANT: Your response must start with [ and end with ]. Output the JSON array and nothing else.
 No explanations, no markdown, no code fences, no introductory text. Just the raw JSON array.
 
 Each object must have exactly these three fields:
-- "description": concise, browser-agnostic description. STRICT rules: (1) start directly with the element name — NEVER a leading article such as "The", "A", or "An"; (2) no trailing punctuation; (3) use IDENTICAL wording regardless of which browser rendered the page — the same underlying bug must produce the exact same description string across all browsers. Use the pattern "[Element] [symptom]", e.g., "Search bar hidden on narrow viewports (mobile devices)", "Logo not centered in header". When a bug manifests on narrow/small screens, always use the phrasing "narrow viewports (mobile devices)"
+- "description": concise, browser-agnostic description. STRICT rules: (1) start directly with the element name — NEVER a leading article such as "The", "A", or "An"; (2) the symptom word MUST be one of the seven keywords from <symptom_vocabulary> above; (3) no trailing punctuation; (4) use IDENTICAL wording regardless of which browser rendered the page. Format: "[Element] [symptom-keyword] on [location]" or "[Element] [symptom-keyword]". Examples: "Search bar clipped on narrow viewports (mobile devices)", "Logo misaligned in header", "Nav menu hidden on narrow viewports (mobile devices)". When the bug appears on small/narrow screens always write "on narrow viewports (mobile devices)"
 - "element_selector": the HTML tag, id, or class responsible (infer from the DOM)
-- "suggested_solution": a concrete technical fix
+- "suggested_solution": a concrete technical fix (free-form, no keyword restriction)
 
 If there are absolutely no bugs, return an empty array: []
 </output_format>
@@ -42,12 +53,12 @@ If there are absolutely no bugs, return an empty array: []
 <example>
 [
   {
-    "description": "Submit button text clipped — label overflows button boundary on narrow viewports (mobile devices)",
+    "description": "Submit button clipped on narrow viewports (mobile devices)",
     "element_selector": "button#submit-btn",
     "suggested_solution": "Remove fixed width; use horizontal padding instead so the button scales with its label"
   },
   {
-    "description": "Navigation bar overlaps hero image content on scroll due to missing stacking context",
+    "description": "Navigation bar overlapping hero image on scroll",
     "element_selector": ".navbar",
     "suggested_solution": "Add position: sticky and z-index: 100 to .navbar so it stays above page content"
   }
