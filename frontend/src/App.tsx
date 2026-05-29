@@ -187,8 +187,26 @@ function App() {
     }
   }
 
-  const normalizeDesc = (s: string) =>
-    s.toLowerCase().trim().replace(/^(the|a|an)\s+/, '').replace(/[.!?,]+$/, '')
+  // Map symptom synonyms to canonical vocabulary keywords so minor AI wording
+  // differences collapse to the same string before key comparison.
+  const SYMPTOM_SYNONYMS: [RegExp, string][] = [
+    [/\bnot (fully |partially )?(visible|shown|displayed|rendered)\b/g, 'clipped'],
+    [/\b(partially |partly )?(cut off|truncated|overflow(?:ing)?|clips?)\b/g, 'clipped'],
+    [/\b(not visible|invisible|not shown|disappears?)\b/g, 'hidden'],
+    [/\b(overlaps?|covers?|obscures?|on top of)\b/g, 'overlapping'],
+    [/\b(misaligned|mis-aligned|out of (place|alignment)|off-?center|offset)\b/g, 'misaligned'],
+    [/\b(collapsed|broken layout|zero height|zero width)\b/g, 'collapsed'],
+    [/\b(low contrast|poor contrast|insufficient contrast)\b/g, 'low-contrast'],
+    [/\b(broken image|missing image|image (not |fails? to )load)\b/g, 'image-broken'],
+  ]
+
+  const normalizeDesc = (s: string) => {
+    let n = s.toLowerCase().trim().replace(/^(the|a|an)\s+/, '').replace(/[.!?,]+$/, '')
+    for (const [pattern, replacement] of SYMPTOM_SYNONYMS) {
+      n = n.replace(pattern, replacement)
+    }
+    return n
+  }
 
   const jaccardSimilarity = (a: string, b: string): number => {
     const sa = new Set(a.split(/\s+/).filter(Boolean))
