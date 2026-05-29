@@ -43,7 +43,6 @@ function App() {
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const [result, setResult] = useState<CrawlResult[] | null>(null)
-  const [retryingBrowsers, setRetryingBrowsers] = useState<Set<string>>(new Set())
   const [showSettings, setShowSettings] = useState(false)
   const [targetBrowser, setTargetBrowser] = useState('all')
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -84,18 +83,6 @@ function App() {
 
   const isConfigured = !!(activeProvider && activeApiKey && activeModel)
 
-  const BROWSER_ORDER = ['chromium', 'firefox', 'webkit']
-  const byBrowserOrder = (a: string, b: string) =>
-    BROWSER_ORDER.indexOf(a) - BROWSER_ORDER.indexOf(b)
-
-  const expectedBrowsers = targetBrowser === 'all'
-    ? ['chromium', 'firefox', 'webkit']
-    : [targetBrowser]
-  const completedBrowserNames = new Set(result?.map(r => r.browser) ?? [])
-  const pendingBrowsers = isProcessing
-    ? expectedBrowsers.filter(b => !completedBrowserNames.has(b)).sort(byBrowserOrder)
-    : []
-  const sortedResult = [...(result ?? [])].sort((a, b) => byBrowserOrder(a.browser, b.browser))
 
   const getNativeBrowserType = () => {
     const ua = navigator.userAgent.toLowerCase()
@@ -118,7 +105,6 @@ function App() {
     abortRef.current = ctrl
     setIsProcessing(true)
     setResult(null)
-    setRetryingBrowsers(new Set())
     setAnalysisError(null)
 
     try {
@@ -181,18 +167,12 @@ function App() {
             if (browserResult.status === 'retrying') {
               // Remove the previous (zero-bug) result for this browser so it shows as pending again
               setResult(prev => (prev ?? []).filter(r => r.browser !== browserResult.browser))
-              setRetryingBrowsers(prev => new Set([...prev, browserResult.browser]))
             } else {
               // Replace any existing result for this browser (handles retry replacement)
               setResult(prev => [
                 ...(prev ?? []).filter(r => r.browser !== browserResult.browser),
                 browserResult,
               ])
-              setRetryingBrowsers(prev => {
-                const next = new Set(prev)
-                next.delete(browserResult.browser)
-                return next
-              })
             }
           } catch {
             // malformed SSE chunk — skip rather than crash
@@ -404,60 +384,6 @@ function App() {
         {/* Results */}
         {result !== null && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight">Crawl Results</h2>
-              {isProcessing && (
-                <>
-                  <span className="flex items-center gap-1.5 text-xs font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/50 px-3 py-1 rounded-full">
-                    <Loader2 size={12} className="animate-spin" /> {completedBrowserNames.size}/{expectedBrowsers.length} done
-                  </span>
-                  <button
-                    onClick={handleCancel}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-rose-500 dark:hover:text-rose-400 transition"
-                  >
-                    <X size={13} /> Cancel
-                  </button>
-                </>
-              )}
-            </div>
-            <div className={`grid grid-cols-1 ${(sortedResult.length + pendingBrowsers.length) > 1 ? 'md:grid-cols-3' : 'max-w-md'} gap-6`}>
-              {sortedResult.map((res, idx) => (
-                <div key={idx} className="bg-white dark:bg-zinc-900/80 p-5 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 transition-colors backdrop-blur-xl flex flex-col">
-                  <div className="flex items-center justify-between mb-5">
-                    <span className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold rounded-full">
-                      {browserLabel(res.browser)}
-                    </span>
-                    {res.status === 'success'
-                      ? <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-full border border-emerald-200 dark:border-emerald-800/50">SUCCESS</span>
-                      : <span className="text-xs font-extrabold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-3 py-1.5 rounded-full border border-rose-200 dark:border-rose-800/50">ERROR</span>}
-                  </div>
-                  {res.screenshot && <img src={`${API_BASE}/${res.screenshot}`} alt={`${res.browser} screenshot`} className="w-full h-auto rounded-2xl border border-zinc-200 dark:border-zinc-700 mb-5 object-cover" />}
-                  {res.error && <div className="text-sm font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 p-4 rounded-2xl mb-5 border border-rose-100 dark:border-rose-900/50">{res.error}</div>}
-                  {res.ai_error && <div className="text-sm font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-4 rounded-2xl mb-5 border border-amber-100 dark:border-amber-900/50">AI analysis failed: {res.ai_error}</div>}
-                </div>
-              ))}
-              {pendingBrowsers.map(b => (
-                <div key={`pending-${b}`} className="bg-white dark:bg-zinc-900/80 p-5 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 backdrop-blur-xl flex flex-col">
-                  <div className="flex items-center justify-between mb-5">
-                    <span className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold rounded-full">
-                      {browserLabel(b)}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {retryingBrowsers.has(b) && (
-                        <span className="text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded-full border border-amber-200 dark:border-amber-800/50">Retrying</span>
-                      )}
-                      <Loader2 size={16} className="animate-spin text-violet-400" />
-                    </div>
-                  </div>
-                  <div className="flex-1 flex flex-col gap-3 animate-pulse">
-                    <div className="h-40 bg-zinc-100 dark:bg-zinc-800/60 rounded-2xl" />
-                    <div className="h-3 bg-zinc-100 dark:bg-zinc-800/60 rounded w-3/4" />
-                    <div className="h-3 bg-zinc-100 dark:bg-zinc-800/60 rounded w-1/2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-
             {!isProcessing && aggregatedBugs.length > 0 ? (
               <div className="bg-violet-50/50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/50 p-8 rounded-3xl mb-8">
                 <h3 className="text-2xl font-extrabold text-violet-900 dark:text-violet-300 mb-6 flex items-center gap-3">
@@ -495,7 +421,7 @@ function App() {
               </div>
             ) : !isProcessing ? (
               <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 p-8 rounded-3xl mb-8 flex items-center justify-center">
-                <p className="text-lg font-bold text-amber-700 dark:text-amber-400">Analysis incomplete — one or more browsers returned errors. Check individual results above.</p>
+                <p className="text-lg font-bold text-amber-700 dark:text-amber-400">Analysis incomplete — one or more browsers returned errors.</p>
               </div>
             ) : null}
           </div>
