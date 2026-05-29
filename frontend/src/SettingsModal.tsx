@@ -63,7 +63,7 @@ export default function SettingsModal({
         for (const pid of Object.keys(merged)) {
           const saved = localStorage.getItem(`VL_MODELS_${pid}`)
           if (saved) {
-            try { merged[pid] = { ...merged[pid], vision_models: JSON.parse(saved) } } catch {}
+            try { merged[pid] = { ...merged[pid], vision_models: JSON.parse(saved) } } catch { /* ignore malformed cache */ }
           }
         }
         setProviders(merged)
