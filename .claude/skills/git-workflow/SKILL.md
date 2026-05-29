@@ -1,11 +1,6 @@
 ---
 name: git-workflow
-description: >
-  Git workflow enforcer for this repo. Invoke when making commits, pushing code,
-  creating pull requests, branching, or making any change to the repository.
-  Triggers on: "create a commit", "commit this", "push it", "push to GitHub",
-  "create a PR", "make a PR", "open a PR", "push changes", "start a branch",
-  "branch from main", or any request that involves modifying git repository state.
+description: "Git workflow enforcer for this repo. Use when making commits, pushing code, creating pull requests, or branching. Triggers on: create a commit, commit this, commit the change, commit and push, push it, push the fix, push to GitHub, push changes, create a PR, make a PR, open a PR, open a pull request, submit a PR, start a branch, branch from main, or any request that involves modifying git repository state."
 ---
 
 # Git Workflow
