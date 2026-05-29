@@ -1,18 +1,38 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 from typing import Optional
+import ipaddress
 import json
 import crawler
 import os
+from urllib.parse import urlparse
 from providers import get_providers_catalog, verify_api_key
 from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="VisualLens API", description="AI-powered Visual Regression Testing Agent")
+
+def _check_ssrf(url: str) -> None:
+    """Raise ValueError if the URL resolves to a private or reserved IP literal."""
+    host = urlparse(url).hostname or ""
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+            raise ValueError("Requests to private or reserved addresses are not allowed")
+    except ValueError as exc:
+        if "not allowed" in str(exc):
+            raise
+        # host is a domain name, not an IP literal — allow
+
+
+app = FastAPI(
+    title="VisualLens API",
+    description="AI-powered Visual Regression Testing Agent",
+    version="0.1.0",
+)
 
 _allowed_origins_raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000")
 _allowed_origins = [o.strip() for o in _allowed_origins_raw.split(",") if o.strip()]
@@ -21,9 +41,18 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
 
 os.makedirs("static/screenshots", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -38,6 +67,7 @@ class AuthRequest(BaseModel):
         v = v.strip()
         if not v.startswith(("http://", "https://")):
             v = f"https://{v}"
+        _check_ssrf(v)
         return v
 
 class VerifyKeyRequest(BaseModel):
@@ -58,6 +88,7 @@ class CrawlRequest(BaseModel):
         v = v.strip()
         if not v.startswith(("http://", "https://")):
             v = f"https://{v}"
+        _check_ssrf(v)
         return v
 
     @field_validator("max_pages")

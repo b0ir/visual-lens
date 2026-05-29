@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Apply label and assign reviewer
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const branch = context.payload.pull_request.head.ref;
@@ -79,16 +79,16 @@ jobs:
       typecheck_result:  ${{ steps.typecheck.outcome }}
       build_result:      ${{ steps.build.outcome }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20.x
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install frontend deps
-        run: cd frontend && npm ci
+        run: npm ci
 
       - name: Lint
         id: lint
@@ -106,7 +106,7 @@ jobs:
         continue-on-error: true
 
       - name: Post checks summary comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const icon = (r) => r === 'success' ? '✅' : '❌';
@@ -136,7 +136,7 @@ jobs:
     name: AI Code Review
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Review with Qwen and post comment
         env:
