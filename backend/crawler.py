@@ -140,6 +140,31 @@ async def stream_headless_crawler(
             await queue.put(result)
 
         tasks = [asyncio.create_task(crawl_and_enqueue(b)) for b in browsers]
+
+        initial: dict[str, dict[str, Any]] = {}
         for _ in browsers:
-            yield await queue.get()
+            result = await queue.get()
+            initial[result["browser"]] = result
+            yield result
         await asyncio.gather(*tasks, return_exceptions=True)
+
+        # If running multiple browsers and at least one found bugs but another found none,
+        # retry the zero-bug browsers once — model inconsistency can cause false "no bugs".
+        if len(browsers) > 1:
+            any_bugs = any(
+                bool(r.get("ai_report"))
+                for r in initial.values()
+                if r.get("status") == "success"
+            )
+            if any_bugs:
+                to_retry = [
+                    b for b, r in initial.items()
+                    if r.get("status") == "success" and not r.get("ai_report")
+                ]
+                for b in to_retry:
+                    yield {"status": "retrying", "browser": b}
+
+                retry_tasks = [asyncio.create_task(crawl_and_enqueue(b)) for b in to_retry]
+                for _ in to_retry:
+                    yield await queue.get()
+                await asyncio.gather(*retry_tasks, return_exceptions=True)

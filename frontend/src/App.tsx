@@ -43,6 +43,7 @@ function App() {
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const [result, setResult] = useState<CrawlResult[] | null>(null)
+  const [retryingBrowsers, setRetryingBrowsers] = useState<Set<string>>(new Set())
   const [showSettings, setShowSettings] = useState(false)
   const [targetBrowser, setTargetBrowser] = useState('all')
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -117,6 +118,7 @@ function App() {
     abortRef.current = ctrl
     setIsProcessing(true)
     setResult(null)
+    setRetryingBrowsers(new Set())
     setAnalysisError(null)
 
     try {
@@ -176,7 +178,22 @@ function App() {
           if (payload === '[DONE]') break outer
           try {
             const browserResult = JSON.parse(payload) as CrawlResult
-            setResult(prev => [...(prev ?? []), browserResult])
+            if (browserResult.status === 'retrying') {
+              // Remove the previous (zero-bug) result for this browser so it shows as pending again
+              setResult(prev => (prev ?? []).filter(r => r.browser !== browserResult.browser))
+              setRetryingBrowsers(prev => new Set([...prev, browserResult.browser]))
+            } else {
+              // Replace any existing result for this browser (handles retry replacement)
+              setResult(prev => [
+                ...(prev ?? []).filter(r => r.browser !== browserResult.browser),
+                browserResult,
+              ])
+              setRetryingBrowsers(prev => {
+                const next = new Set(prev)
+                next.delete(browserResult.browser)
+                return next
+              })
+            }
           } catch {
             // malformed SSE chunk — skip rather than crash
           }
@@ -425,7 +442,12 @@ function App() {
                     <span className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold rounded-full">
                       {browserLabel(b)}
                     </span>
-                    <Loader2 size={16} className="animate-spin text-violet-400" />
+                    <div className="flex items-center gap-2">
+                      {retryingBrowsers.has(b) && (
+                        <span className="text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded-full border border-amber-200 dark:border-amber-800/50">Retrying</span>
+                      )}
+                      <Loader2 size={16} className="animate-spin text-violet-400" />
+                    </div>
                   </div>
                   <div className="flex-1 flex flex-col gap-3 animate-pulse">
                     <div className="h-40 bg-zinc-100 dark:bg-zinc-800/60 rounded-2xl" />
