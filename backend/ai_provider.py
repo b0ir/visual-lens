@@ -32,7 +32,7 @@ IMPORTANT: Your response must start with [ and end with ]. Output the JSON array
 No explanations, no markdown, no code fences, no introductory text. Just the raw JSON array.
 
 Each object must have exactly these three fields:
-- "description": concise, browser-agnostic description. STRICT rules: (1) start directly with the element name — NEVER a leading article such as "The", "A", or "An"; (2) no trailing punctuation; (3) use IDENTICAL wording regardless of which browser rendered the page — the same underlying bug must produce the exact same description string across all browsers. Use the pattern "[Element] [symptom]", e.g., "Search bar hidden on narrow viewports", "Logo not centered in header"
+- "description": concise, browser-agnostic description. STRICT rules: (1) start directly with the element name — NEVER a leading article such as "The", "A", or "An"; (2) no trailing punctuation; (3) use IDENTICAL wording regardless of which browser rendered the page — the same underlying bug must produce the exact same description string across all browsers. Use the pattern "[Element] [symptom]", e.g., "Search bar hidden on narrow viewports (mobile devices)", "Logo not centered in header". When a bug manifests on narrow/small screens, always use the phrasing "narrow viewports (mobile devices)"
 - "element_selector": the HTML tag, id, or class responsible (infer from the DOM)
 - "suggested_solution": a concrete technical fix
 
@@ -42,7 +42,7 @@ If there are absolutely no bugs, return an empty array: []
 <example>
 [
   {
-    "description": "Submit button text is clipped — label overflows the button boundary on narrow viewports",
+    "description": "Submit button text clipped — label overflows button boundary on narrow viewports (mobile devices)",
     "element_selector": "button#submit-btn",
     "suggested_solution": "Remove fixed width; use horizontal padding instead so the button scales with its label"
   },
