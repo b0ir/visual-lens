@@ -50,6 +50,7 @@ Each bug object must have exactly these three fields:
 "suggested_solution": a concrete technical fix (free-form)
 
 If there are no bugs respond with: {"bugs": []}
+Important: err on the side of reporting potential bugs. A missed bug is worse than a false positive in a QA context.
 </output_format>
 
 <example>
@@ -140,7 +141,7 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
             response = await acompletion(
                 model=model_name,
                 messages=messages,
-                temperature=0.1,
+                temperature=0,
                 api_key=api_key,
                 num_retries=0,
                 timeout=60,
@@ -152,7 +153,7 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
                 response = await acompletion(
                     model=model_name,
                     messages=messages,
-                    temperature=0.1,
+                    temperature=0,
                     api_key=api_key,
                     num_retries=0,
                     timeout=60,
