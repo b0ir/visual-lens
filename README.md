@@ -37,8 +37,6 @@ An autonomous, AI-powered visual regression and UI testing agent. It crawls web 
                                └──────────────────────────┘
 ```
 
-The frontend streams results over SSE as each browser completes — no waiting for all three to finish.
-
 ## Repository Structure
 
 Polyglot Monorepo managed by a root `package.json`.
