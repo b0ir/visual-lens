@@ -71,13 +71,19 @@ PROVIDERS = {
         "name": "OpenRouter",
         "env_key": "OPENROUTER_API_KEY",
         "website": "https://openrouter.ai/keys",
-        "description": "Access 100+ models with one key",
+        "description": "100+ models via one key — free tier available",
         "vision_models": [
-            {"id": "openrouter/google/gemini-2.5-flash", "name": "Gemini 2.5 Flash (via OpenRouter)"},
-            {"id": "openrouter/anthropic/claude-sonnet-4-6", "name": "Claude Sonnet 4.6 (via OpenRouter)"},
-            {"id": "openrouter/openai/gpt-4.1", "name": "GPT-4.1 (via OpenRouter)"},
-            {"id": "openrouter/meta-llama/llama-4-maverick", "name": "Llama 4 Maverick (via OpenRouter)"},
-            {"id": "openrouter/qwen/qwen-2.5-vl-72b-instruct", "name": "Qwen 2.5 VL 72B (via OpenRouter)"},
+            {"id": "openrouter/google/gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
+            {"id": "openrouter/anthropic/claude-sonnet-4-6", "name": "Claude Sonnet 4.6"},
+            {"id": "openrouter/openai/gpt-4.1", "name": "GPT-4.1"},
+            {"id": "openrouter/meta-llama/llama-4-maverick", "name": "Llama 4 Maverick"},
+            {"id": "openrouter/qwen/qwen-2.5-vl-72b-instruct", "name": "Qwen 2.5 VL 72B"},
+        ],
+        # Models accessible without credits (OpenRouter :free-tier variants).
+        # These use the :free suffix which routes to providers that sponsor free access.
+        "free_vision_models": [
+            {"id": "openrouter/meta-llama/llama-4-maverick", "name": "Llama 4 Maverick (Free)"},
+            {"id": "openrouter/meta-llama/llama-4-scout", "name": "Llama 4 Scout (Free)"},
         ],
     },
     "nvidia": {
@@ -173,7 +179,13 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
                 if resp.status_code == 200:
-                    return {"valid": True}
+                    key_data = resp.json().get("data", {})
+                    is_free_tier = key_data.get("is_free_tier", False)
+                    models_key = "free_vision_models" if is_free_tier else "vision_models"
+                    return {
+                        "valid": True,
+                        "vision_models": PROVIDERS["openrouter"].get(models_key, PROVIDERS["openrouter"]["vision_models"]),
+                    }
                 return {"valid": False, "error": "Invalid API key"}
 
             elif provider_id == "nvidia":

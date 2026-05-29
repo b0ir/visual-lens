@@ -43,6 +43,7 @@ function App() {
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const [result, setResult] = useState<CrawlResult[] | null>(null)
+  const [retryingBrowsers, setRetryingBrowsers] = useState<Set<string>>(new Set())
   const [showSettings, setShowSettings] = useState(false)
   const [targetBrowser, setTargetBrowser] = useState('all')
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -83,13 +84,18 @@ function App() {
 
   const isConfigured = !!(activeProvider && activeApiKey && activeModel)
 
+  const BROWSER_ORDER = ['chromium', 'firefox', 'webkit']
+  const byBrowserOrder = (a: string, b: string) =>
+    BROWSER_ORDER.indexOf(a) - BROWSER_ORDER.indexOf(b)
+
   const expectedBrowsers = targetBrowser === 'all'
     ? ['chromium', 'firefox', 'webkit']
     : [targetBrowser]
   const completedBrowserNames = new Set(result?.map(r => r.browser) ?? [])
   const pendingBrowsers = isProcessing
-    ? expectedBrowsers.filter(b => !completedBrowserNames.has(b))
+    ? expectedBrowsers.filter(b => !completedBrowserNames.has(b)).sort(byBrowserOrder)
     : []
+  const sortedResult = [...(result ?? [])].sort((a, b) => byBrowserOrder(a.browser, b.browser))
 
   const getNativeBrowserType = () => {
     const ua = navigator.userAgent.toLowerCase()
@@ -112,6 +118,7 @@ function App() {
     abortRef.current = ctrl
     setIsProcessing(true)
     setResult(null)
+    setRetryingBrowsers(new Set())
     setAnalysisError(null)
 
     try {
@@ -171,7 +178,22 @@ function App() {
           if (payload === '[DONE]') break outer
           try {
             const browserResult = JSON.parse(payload) as CrawlResult
-            setResult(prev => [...(prev ?? []), browserResult])
+            if (browserResult.status === 'retrying') {
+              // Remove the previous (zero-bug) result for this browser so it shows as pending again
+              setResult(prev => (prev ?? []).filter(r => r.browser !== browserResult.browser))
+              setRetryingBrowsers(prev => new Set([...prev, browserResult.browser]))
+            } else {
+              // Replace any existing result for this browser (handles retry replacement)
+              setResult(prev => [
+                ...(prev ?? []).filter(r => r.browser !== browserResult.browser),
+                browserResult,
+              ])
+              setRetryingBrowsers(prev => {
+                const next = new Set(prev)
+                next.delete(browserResult.browser)
+                return next
+              })
+            }
           } catch {
             // malformed SSE chunk — skip rather than crash
           }
@@ -187,24 +209,91 @@ function App() {
     }
   }
 
-  const normalizeDesc = (s: string) => s.toLowerCase().trim().replace(/[.!?,]+$/, '')
+  const SYMPTOM_KEYWORDS = ['hidden', 'clipped', 'overlapping', 'misaligned', 'collapsed', 'low-contrast', 'image-broken'] as const
 
-  const getAggregatedBugs = () => {
+  // Map free-form symptom phrases to canonical keywords before any comparison.
+  const SYMPTOM_SYNONYMS: [RegExp, string][] = [
+    [/\bnot (fully |partially )?(visible|shown|displayed|rendered)\b/g, 'clipped'],
+    [/\b(partially |partly )?(cut off|truncated|overflow(?:ing)?|clips?)\b/g, 'clipped'],
+    [/\b(not visible|invisible|not shown|disappears?)\b/g, 'hidden'],
+    [/\b(overlaps?|covers?|obscures?|on top of)\b/g, 'overlapping'],
+    [/\b(misaligned|mis-aligned|out of (place|alignment)|off-?center|offset)\b/g, 'misaligned'],
+    [/\b(collapsed|broken layout|zero height|zero width)\b/g, 'collapsed'],
+    [/\b(low contrast|poor contrast|insufficient contrast)\b/g, 'low-contrast'],
+    [/\b(broken image|missing image|image (not |fails? to )load)\b/g, 'image-broken'],
+  ]
+
+  // Generic selectors that are too broad to use as a dedup anchor.
+  const GENERIC_SELECTORS = new Set(['div', 'span', 'p', 'section', 'article', 'main', 'header', 'footer', 'body', 'html', 'ul', 'li', 'nav'])
+
+  const normalizeDesc = (s: string) => {
+    let n = s.toLowerCase().trim().replace(/^(the|a|an)\s+/, '').replace(/[.!?,]+$/, '')
+    for (const [pattern, replacement] of SYMPTOM_SYNONYMS) {
+      n = n.replace(pattern, replacement)
+    }
+    return n
+  }
+
+  const extractSymptom = (desc: string): string => {
+    const lower = desc.toLowerCase()
+    return SYMPTOM_KEYWORDS.find(k => lower.includes(k)) ?? ''
+  }
+
+  const jaccardSimilarity = (a: string, b: string): number => {
+    const sa = new Set(a.split(/\s+/).filter(Boolean))
+    const sb = new Set(b.split(/\s+/).filter(Boolean))
+    let intersection = 0
+    sa.forEach(w => { if (sb.has(w)) intersection++ })
+    const union = new Set([...sa, ...sb]).size
+    return union === 0 ? 1 : intersection / union
+  }
+
+  const DEDUP_THRESHOLD = 0.65
+
+  type BugEntry = { desc: string; solution: string; element: string; browsers: string[] }
+
+  const getAggregatedBugs = (): BugEntry[] => {
     if (!result) return []
-    const bugMap: Record<string, { desc: string; solution: string; element: string; browsers: string[] }> = {}
+
+    // Primary index: "element_selector::symptom" — deterministic, DOM-based.
+    const bySelector: Record<string, BugEntry> = {}
+    // Fallback index: normalized description — for generic/ambiguous selectors.
+    const byDesc: Record<string, BugEntry> = {}
+
     result.forEach((res) => {
-      if (res.ai_report && Array.isArray(res.ai_report)) {
-        res.ai_report.forEach((bug) => {
-          const key = normalizeDesc(bug.description)
-          if (!bugMap[key]) {
-            bugMap[key] = { desc: bug.description, solution: bug.suggested_solution, element: bug.element_selector, browsers: [res.browser] }
-          } else if (!bugMap[key].browsers.includes(res.browser)) {
-            bugMap[key].browsers.push(res.browser)
-          }
-        })
-      }
+      if (!res.ai_report || !Array.isArray(res.ai_report)) return
+      res.ai_report.forEach((bug) => {
+        const selector = bug.element_selector.toLowerCase().trim()
+        const symptom = extractSymptom(bug.description)
+        const selectorKey = !GENERIC_SELECTORS.has(selector) && selector.length > 2 && symptom
+          ? `${selector}::${symptom}`
+          : null
+        const descKey = normalizeDesc(bug.description)
+
+        // 1. Try primary key: same element + same symptom type = same bug.
+        if (selectorKey && bySelector[selectorKey]) {
+          if (!bySelector[selectorKey].browsers.includes(res.browser))
+            bySelector[selectorKey].browsers.push(res.browser)
+          return
+        }
+
+        // 2. Try fallback: description similarity (catches generic selectors).
+        const existingDescKey = Object.keys(byDesc).find(k => jaccardSimilarity(k, descKey) >= DEDUP_THRESHOLD)
+        if (existingDescKey) {
+          if (!byDesc[existingDescKey].browsers.includes(res.browser))
+            byDesc[existingDescKey].browsers.push(res.browser)
+          if (selectorKey) bySelector[selectorKey] = byDesc[existingDescKey]
+          return
+        }
+
+        // 3. New unique bug.
+        const entry: BugEntry = { desc: bug.description, solution: bug.suggested_solution, element: bug.element_selector, browsers: [res.browser] }
+        if (selectorKey) bySelector[selectorKey] = entry
+        byDesc[descKey] = entry
+      })
     })
-    return Object.values(bugMap)
+
+    return Object.values(byDesc)
   }
 
   const aggregatedBugs = getAggregatedBugs()
@@ -331,8 +420,8 @@ function App() {
                 </>
               )}
             </div>
-            <div className={`grid grid-cols-1 ${(result.length + pendingBrowsers.length) > 1 ? 'md:grid-cols-3' : 'max-w-md'} gap-6`}>
-              {result.map((res, idx) => (
+            <div className={`grid grid-cols-1 ${(sortedResult.length + pendingBrowsers.length) > 1 ? 'md:grid-cols-3' : 'max-w-md'} gap-6`}>
+              {sortedResult.map((res, idx) => (
                 <div key={idx} className="bg-white dark:bg-zinc-900/80 p-5 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 transition-colors backdrop-blur-xl flex flex-col">
                   <div className="flex items-center justify-between mb-5">
                     <span className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold rounded-full">
@@ -353,7 +442,12 @@ function App() {
                     <span className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold rounded-full">
                       {browserLabel(b)}
                     </span>
-                    <Loader2 size={16} className="animate-spin text-violet-400" />
+                    <div className="flex items-center gap-2">
+                      {retryingBrowsers.has(b) && (
+                        <span className="text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded-full border border-amber-200 dark:border-amber-800/50">Retrying</span>
+                      )}
+                      <Loader2 size={16} className="animate-spin text-violet-400" />
+                    </div>
                   </div>
                   <div className="flex-1 flex flex-col gap-3 animate-pulse">
                     <div className="h-40 bg-zinc-100 dark:bg-zinc-800/60 rounded-2xl" />
