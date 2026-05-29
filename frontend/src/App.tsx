@@ -187,8 +187,9 @@ function App() {
     }
   }
 
-  // Map symptom synonyms to canonical vocabulary keywords so minor AI wording
-  // differences collapse to the same string before key comparison.
+  const SYMPTOM_KEYWORDS = ['hidden', 'clipped', 'overlapping', 'misaligned', 'collapsed', 'low-contrast', 'image-broken'] as const
+
+  // Map free-form symptom phrases to canonical keywords before any comparison.
   const SYMPTOM_SYNONYMS: [RegExp, string][] = [
     [/\bnot (fully |partially )?(visible|shown|displayed|rendered)\b/g, 'clipped'],
     [/\b(partially |partly )?(cut off|truncated|overflow(?:ing)?|clips?)\b/g, 'clipped'],
@@ -200,12 +201,20 @@ function App() {
     [/\b(broken image|missing image|image (not |fails? to )load)\b/g, 'image-broken'],
   ]
 
+  // Generic selectors that are too broad to use as a dedup anchor.
+  const GENERIC_SELECTORS = new Set(['div', 'span', 'p', 'section', 'article', 'main', 'header', 'footer', 'body', 'html', 'ul', 'li', 'nav'])
+
   const normalizeDesc = (s: string) => {
     let n = s.toLowerCase().trim().replace(/^(the|a|an)\s+/, '').replace(/[.!?,]+$/, '')
     for (const [pattern, replacement] of SYMPTOM_SYNONYMS) {
       n = n.replace(pattern, replacement)
     }
     return n
+  }
+
+  const extractSymptom = (desc: string): string => {
+    const lower = desc.toLowerCase()
+    return SYMPTOM_KEYWORDS.find(k => lower.includes(k)) ?? ''
   }
 
   const jaccardSimilarity = (a: string, b: string): number => {
@@ -219,23 +228,50 @@ function App() {
 
   const DEDUP_THRESHOLD = 0.65
 
-  const getAggregatedBugs = () => {
+  type BugEntry = { desc: string; solution: string; element: string; browsers: string[] }
+
+  const getAggregatedBugs = (): BugEntry[] => {
     if (!result) return []
-    const bugMap: Record<string, { desc: string; solution: string; element: string; browsers: string[] }> = {}
+
+    // Primary index: "element_selector::symptom" — deterministic, DOM-based.
+    const bySelector: Record<string, BugEntry> = {}
+    // Fallback index: normalized description — for generic/ambiguous selectors.
+    const byDesc: Record<string, BugEntry> = {}
+
     result.forEach((res) => {
-      if (res.ai_report && Array.isArray(res.ai_report)) {
-        res.ai_report.forEach((bug) => {
-          const key = normalizeDesc(bug.description)
-          const existingKey = Object.keys(bugMap).find(k => jaccardSimilarity(k, key) >= DEDUP_THRESHOLD)
-          if (!existingKey) {
-            bugMap[key] = { desc: bug.description, solution: bug.suggested_solution, element: bug.element_selector, browsers: [res.browser] }
-          } else if (!bugMap[existingKey].browsers.includes(res.browser)) {
-            bugMap[existingKey].browsers.push(res.browser)
-          }
-        })
-      }
+      if (!res.ai_report || !Array.isArray(res.ai_report)) return
+      res.ai_report.forEach((bug) => {
+        const selector = bug.element_selector.toLowerCase().trim()
+        const symptom = extractSymptom(bug.description)
+        const selectorKey = !GENERIC_SELECTORS.has(selector) && selector.length > 2 && symptom
+          ? `${selector}::${symptom}`
+          : null
+        const descKey = normalizeDesc(bug.description)
+
+        // 1. Try primary key: same element + same symptom type = same bug.
+        if (selectorKey && bySelector[selectorKey]) {
+          if (!bySelector[selectorKey].browsers.includes(res.browser))
+            bySelector[selectorKey].browsers.push(res.browser)
+          return
+        }
+
+        // 2. Try fallback: description similarity (catches generic selectors).
+        const existingDescKey = Object.keys(byDesc).find(k => jaccardSimilarity(k, descKey) >= DEDUP_THRESHOLD)
+        if (existingDescKey) {
+          if (!byDesc[existingDescKey].browsers.includes(res.browser))
+            byDesc[existingDescKey].browsers.push(res.browser)
+          if (selectorKey) bySelector[selectorKey] = byDesc[existingDescKey]
+          return
+        }
+
+        // 3. New unique bug.
+        const entry: BugEntry = { desc: bug.description, solution: bug.suggested_solution, element: bug.element_selector, browsers: [res.browser] }
+        if (selectorKey) bySelector[selectorKey] = entry
+        byDesc[descKey] = entry
+      })
     })
-    return Object.values(bugMap)
+
+    return Object.values(byDesc)
   }
 
   const aggregatedBugs = getAggregatedBugs()
