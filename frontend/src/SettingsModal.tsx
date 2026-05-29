@@ -57,7 +57,17 @@ export default function SettingsModal({
   useEffect(() => {
     fetch(`${API_BASE}/api/providers`)
       .then(r => r.json())
-      .then(setProviders)
+      .then((data: Record<string, Provider>) => {
+        // Merge in any locally-stored filtered model lists (e.g. OpenRouter free tier)
+        const merged = { ...data }
+        for (const pid of Object.keys(merged)) {
+          const saved = localStorage.getItem(`VL_MODELS_${pid}`)
+          if (saved) {
+            try { merged[pid] = { ...merged[pid], vision_models: JSON.parse(saved) } } catch {}
+          }
+        }
+        setProviders(merged)
+      })
       .catch(console.error)
   }, [])
 
@@ -83,6 +93,14 @@ export default function SettingsModal({
       if (data.valid) {
         setVerifyStatus('valid')
         localStorage.setItem(`VL_API_KEY_${selectedProvider}`, apiKey)
+        // Provider returned a filtered model list (e.g. OpenRouter free vs paid tier)
+        if (Array.isArray(data.vision_models)) {
+          localStorage.setItem(`VL_MODELS_${selectedProvider}`, JSON.stringify(data.vision_models))
+          setProviders(prev => ({
+            ...prev,
+            [selectedProvider]: { ...prev[selectedProvider], vision_models: data.vision_models },
+          }))
+        }
         setStep(3)
       } else {
         setVerifyStatus('invalid')
