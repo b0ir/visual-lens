@@ -141,7 +141,7 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
             response = await acompletion(
                 model=model_name,
                 messages=messages,
-                temperature=0,
+                temperature=0.1,
                 api_key=api_key,
                 num_retries=0,
                 timeout=60,
@@ -153,7 +153,7 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
                 response = await acompletion(
                     model=model_name,
                     messages=messages,
-                    temperature=0,
+                    temperature=0.1,
                     api_key=api_key,
                     num_retries=0,
                     timeout=60,
