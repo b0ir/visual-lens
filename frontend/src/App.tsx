@@ -395,7 +395,7 @@ function App() {
                   ))}
                 </div>
               </div>
-            ) : !isProcessing && result && result.every(r => r.status === 'success') ? (
+            ) : !isProcessing && result && result.every(r => r.status === 'success' && !r.ai_error) ? (
               <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/50 p-8 rounded-3xl mb-8 flex items-center justify-center">
                 <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">No visual bugs detected. The UI looks great across all tested engines.</p>
               </div>
