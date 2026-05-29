@@ -187,7 +187,19 @@ function App() {
     }
   }
 
-  const normalizeDesc = (s: string) => s.toLowerCase().trim().replace(/[.!?,]+$/, '')
+  const normalizeDesc = (s: string) =>
+    s.toLowerCase().trim().replace(/^(the|a|an)\s+/, '').replace(/[.!?,]+$/, '')
+
+  const jaccardSimilarity = (a: string, b: string): number => {
+    const sa = new Set(a.split(/\s+/).filter(Boolean))
+    const sb = new Set(b.split(/\s+/).filter(Boolean))
+    let intersection = 0
+    sa.forEach(w => { if (sb.has(w)) intersection++ })
+    const union = new Set([...sa, ...sb]).size
+    return union === 0 ? 1 : intersection / union
+  }
+
+  const DEDUP_THRESHOLD = 0.65
 
   const getAggregatedBugs = () => {
     if (!result) return []
@@ -196,10 +208,11 @@ function App() {
       if (res.ai_report && Array.isArray(res.ai_report)) {
         res.ai_report.forEach((bug) => {
           const key = normalizeDesc(bug.description)
-          if (!bugMap[key]) {
+          const existingKey = Object.keys(bugMap).find(k => jaccardSimilarity(k, key) >= DEDUP_THRESHOLD)
+          if (!existingKey) {
             bugMap[key] = { desc: bug.description, solution: bug.suggested_solution, element: bug.element_selector, browsers: [res.browser] }
-          } else if (!bugMap[key].browsers.includes(res.browser)) {
-            bugMap[key].browsers.push(res.browser)
+          } else if (!bugMap[existingKey].browsers.includes(res.browser)) {
+            bugMap[existingKey].browsers.push(res.browser)
           }
         })
       }
