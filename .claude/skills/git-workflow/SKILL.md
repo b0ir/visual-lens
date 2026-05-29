@@ -90,6 +90,11 @@ Rules:
 
 ### Push the branch
 
+**PUSH ONLY WHEN EXPLICITLY INSTRUCTED.** Never push automatically after a commit.
+- Push only if the user's message includes an explicit push signal such as: "push", "push to branch", "push and PR", "create PR", or similar.
+- If the message does not include such a signal: commit locally, then stop and tell the user what was committed and that it has not been pushed.
+- Do not infer intent to push from context. When in doubt, do not push.
+
 ```bash
 git push -u origin <branch-name>
 ```
