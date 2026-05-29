@@ -83,13 +83,18 @@ function App() {
 
   const isConfigured = !!(activeProvider && activeApiKey && activeModel)
 
+  const BROWSER_ORDER = ['chromium', 'firefox', 'webkit']
+  const byBrowserOrder = (a: string, b: string) =>
+    BROWSER_ORDER.indexOf(a) - BROWSER_ORDER.indexOf(b)
+
   const expectedBrowsers = targetBrowser === 'all'
     ? ['chromium', 'firefox', 'webkit']
     : [targetBrowser]
   const completedBrowserNames = new Set(result?.map(r => r.browser) ?? [])
   const pendingBrowsers = isProcessing
-    ? expectedBrowsers.filter(b => !completedBrowserNames.has(b))
+    ? expectedBrowsers.filter(b => !completedBrowserNames.has(b)).sort(byBrowserOrder)
     : []
+  const sortedResult = [...(result ?? [])].sort((a, b) => byBrowserOrder(a.browser, b.browser))
 
   const getNativeBrowserType = () => {
     const ua = navigator.userAgent.toLowerCase()
@@ -398,8 +403,8 @@ function App() {
                 </>
               )}
             </div>
-            <div className={`grid grid-cols-1 ${(result.length + pendingBrowsers.length) > 1 ? 'md:grid-cols-3' : 'max-w-md'} gap-6`}>
-              {result.map((res, idx) => (
+            <div className={`grid grid-cols-1 ${(sortedResult.length + pendingBrowsers.length) > 1 ? 'md:grid-cols-3' : 'max-w-md'} gap-6`}>
+              {sortedResult.map((res, idx) => (
                 <div key={idx} className="bg-white dark:bg-zinc-900/80 p-5 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 transition-colors backdrop-blur-xl flex flex-col">
                   <div className="flex items-center justify-between mb-5">
                     <span className="px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-sm font-bold rounded-full">
