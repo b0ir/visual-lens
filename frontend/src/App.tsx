@@ -360,7 +360,7 @@ function App() {
               <p className="text-sm text-zinc-500 dark:text-zinc-400 font-medium mb-6">{statusMessage}</p>
               <button
                 onClick={handleCancel}
-                className="flex items-center gap-2 mx-auto text-sm font-semibold text-zinc-400 hover:text-rose-500 dark:hover:text-rose-400 transition"
+                className="inline-flex items-center gap-2 mx-auto px-4 py-2 text-sm font-semibold text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded-lg hover:border-rose-400 hover:text-rose-500 dark:hover:border-rose-500 dark:hover:text-rose-400 transition"
               >
                 <X size={15} /> Cancel
               </button>
