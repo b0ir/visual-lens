@@ -96,4 +96,4 @@ Edit `backend/providers.py` and add an entry to the `PROVIDERS` dict. No other f
 
 ## License
 
-[MIT](LICENSE) © b0ir
+[MIT](LICENSE) - Use freely, modify as needed, contribute back if you can.
