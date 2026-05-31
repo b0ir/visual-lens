@@ -11,6 +11,8 @@ An autonomous, AI-powered visual regression and UI testing agent. It crawls web 
 - **Vision AI analysis** — sends screenshots + simplified DOM to a vision LLM and receives structured bug reports.
 - **Bring your own key** — supports OpenAI, Anthropic, Google Gemini, DeepSeek, xAI, and OpenRouter. Enter your API key, verify it, and pick from available vision models.
 - **Auth support** — for pages behind login, opens an interactive browser window for manual login before crawling.
+- **Auto-retry** — if one browser finds bugs while another returns none, the zero-bug browsers are re-analyzed once to reduce false negatives from model inconsistency.
+- **Dark mode**.
 
 ## Architecture
 
@@ -33,7 +35,7 @@ An autonomous, AI-powered visual regression and UI testing agent. It crawls web 
                                │  Vision LLM (via litellm)│
                                │                          │
                                │  OpenAI · Anthropic      │
-                               │  Gemini · DeepSeek · ... │
+                               │  Gemini · DeepSeek · xAI │
                                └──────────────────────────┘
 ```
 
@@ -69,7 +71,7 @@ Requires Node.js and Python 3.
 npm run setup:all
 ```
 
-Installs Node and Python dependencies, creates a virtualenv, and downloads Playwright browsers (updates them if you already had them installed).
+Installs Node and Python dependencies, creates a virtualenv, and downloads Playwright browsers.
 
 ### 2. Run
 
