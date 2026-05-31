@@ -204,7 +204,7 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
         return {"valid": False, "error": "Connection timed out. Check your network connection."}
     except Exception as e:
         logger.error(f"Key verification failed for {provider_id}: {e}")
-        return {"valid": False, "error": f"Verification failed: {str(e)}"}
+        return {"valid": False, "error": "Verification failed. Check your network connection and API key."}
 
 
 def get_providers_catalog() -> dict:

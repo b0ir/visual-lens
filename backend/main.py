@@ -6,6 +6,8 @@ from pydantic import BaseModel, field_validator
 from typing import Optional
 import ipaddress
 import json
+import logging
+import socket
 import crawler
 import os
 from urllib.parse import urlparse
@@ -14,18 +16,51 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger("visuallens")
+
+_SSRF_ERROR = "Requests to private or reserved addresses are not allowed"
+
+
+def _is_blocked_ip(ip_str: str) -> bool:
+    """True if the address is private, loopback, reserved, or link-local."""
+    ip = ipaddress.ip_address(ip_str)
+    return ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local
+
 
 def _check_ssrf(url: str) -> None:
-    """Raise ValueError if the URL resolves to a private or reserved IP literal."""
-    host = urlparse(url).hostname or ""
+    """Raise ValueError if the URL's host is, or resolves to, a private/reserved address.
+
+    Covers both IP literals and domain names. Resolving the hostname and checking
+    every returned address defends against DNS-rebinding to internal or
+    cloud-metadata endpoints.
+    """
+    host = (urlparse(url).hostname or "").strip()
+    if not host:
+        raise ValueError("Invalid URL: missing host")
+
+    # IP literal supplied directly.
     try:
-        ip = ipaddress.ip_address(host)
-        if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
-            raise ValueError("Requests to private or reserved addresses are not allowed")
+        if _is_blocked_ip(host):
+            raise ValueError(_SSRF_ERROR)
+        return
     except ValueError as exc:
-        if "not allowed" in str(exc):
+        if _SSRF_ERROR in str(exc):
             raise
-        # host is a domain name, not an IP literal — allow
+        # Not an IP literal — fall through to hostname resolution.
+
+    # localhost and its subdomains never reach DNS but must still be blocked.
+    lowered = host.lower()
+    if lowered == "localhost" or lowered.endswith(".localhost"):
+        raise ValueError(_SSRF_ERROR)
+
+    try:
+        resolved = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        # Unresolvable host — let the browser surface the failure naturally.
+        return
+    for info in resolved:
+        if _is_blocked_ip(info[4][0]):
+            raise ValueError(_SSRF_ERROR)
 
 
 app = FastAPI(
@@ -132,7 +167,13 @@ async def stream_crawl(req: CrawlRequest):
             ):
                 yield f"data: {json.dumps(result)}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'status': 'error', 'browser': 'unknown', 'error': str(e)})}\n\n"
+            logger.error("Crawl stream failed: %s", e, exc_info=True)
+            error_payload = {
+                "status": "error",
+                "browser": "unknown",
+                "error": "An error occurred during crawling. See backend logs for details.",
+            }
+            yield f"data: {json.dumps(error_payload)}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
