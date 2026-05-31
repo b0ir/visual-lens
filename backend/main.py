@@ -8,11 +8,13 @@ import ipaddress
 import json
 import crawler
 import os
+from pathlib import Path
 from urllib.parse import urlparse
 from providers import get_providers_catalog, verify_api_key
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load the single repo-root .env regardless of the working directory.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
 def _check_ssrf(url: str) -> None:
