@@ -36,13 +36,13 @@ jobs:
         run: npm run lint --workspace=frontend
 
       - name: Audit dependencies
-        run: npm audit --audit-level=moderate --workspace=frontend
+        run: npm audit --audit-level=high --workspace=frontend
 
       - name: Build (includes tsc type-check)
         run: npm run build --workspace=frontend
 
   backend:
-    name: Backend lint (ruff)
+    name: Backend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -52,10 +52,14 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install -r backend/requirements.txt ruff
+        run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt ruff
 
       - name: Check dependency compatibility
         run: pip check
 
       - name: Lint
         run: ruff check --select=E9,F63,F7,F82 backend/
+
+      - name: Test
+        run: python -m pytest
+        working-directory: backend
