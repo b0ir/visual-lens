@@ -50,10 +50,11 @@ image-broken: the browser's broken-image icon or gray placeholder must be visibl
 You MUST respond with a single valid JSON object. No prose, no markdown, no code fences, no explanations before or after. Just the JSON object.
 
 The object must have exactly one key "bugs" whose value is an array of bug objects.
-Each bug object must have exactly these three fields:
+Each bug object must have exactly these four fields:
 "description": start with the element name (NEVER a leading "The", "A", or "An"), include exactly one symptom keyword from the vocabulary, no trailing punctuation, use identical wording regardless of which browser rendered the page. Format: "[Element] [symptom-keyword] on [location]" or "[Element] [symptom-keyword]". When the bug appears on small or narrow screens always write "on narrow viewports (mobile devices)". Examples: "Search bar clipped on narrow viewports (mobile devices)", "Logo misaligned in header"
 "element_selector": the HTML tag, id, or class responsible (infer from the DOM)
 "suggested_solution": a concrete technical fix (free-form)
+"confidence": integer 1-5, where 5 = certain (clearly visible in screenshot), 3 = probable, 1 = speculative. Only report bugs you would rate 3 or above.
 
 If there are no bugs respond with: {"bugs": []}
 Important: only report bugs you can clearly see in the screenshot. Visual confirmation is required — do not infer bugs from DOM alone. When in doubt, do not report. A false positive is worse than a missed bug.
@@ -64,12 +65,14 @@ Important: only report bugs you can clearly see in the screenshot. Visual confir
   {
     "description": "Submit button clipped on narrow viewports (mobile devices)",
     "element_selector": "button#submit-btn",
-    "suggested_solution": "Remove fixed width; use horizontal padding instead so the button scales with its label"
+    "suggested_solution": "Remove fixed width; use horizontal padding instead so the button scales with its label",
+    "confidence": 5
   },
   {
     "description": "Navigation bar overlapping hero image on scroll",
     "element_selector": ".navbar",
-    "suggested_solution": "Add position: sticky and z-index: 100 to .navbar so it stays above page content"
+    "suggested_solution": "Add position: sticky and z-index: 100 to .navbar so it stays above page content",
+    "confidence": 4
   }
 ]}
 </example>
@@ -174,7 +177,17 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
         if bugs is None:
             logger.warning(f"Model returned non-JSON content: {content[:200]!r}")
             return []
-        return bugs
+        # Drop low-confidence detections and strip the internal confidence field.
+        filtered = []
+        for b in bugs:
+            try:
+                if int(b.get("confidence", 3)) < 3:
+                    continue
+            except (TypeError, ValueError):
+                pass
+            b.pop("confidence", None)
+            filtered.append(b)
+        return filtered
 
     except Exception as e:
         error_msg = str(e)
