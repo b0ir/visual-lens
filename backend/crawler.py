@@ -1,9 +1,13 @@
 import asyncio
+import logging
+import re
 import time
 from typing import Any, AsyncGenerator
 from playwright.async_api import async_playwright, Playwright, BrowserType
 import os
 from ai_provider import analyze_ui
+
+logger = logging.getLogger(__name__)
 
 AUTH_FILE = "auth.json"
 
@@ -63,7 +67,8 @@ async def _crawl_single_browser(
         await page.goto(start_url, wait_until="networkidle")
 
         os.makedirs("static/screenshots", exist_ok=True)
-        screenshot_path = f"static/screenshots/home_{browser_type}_{timestamp}.png"
+        safe_browser = re.sub(r"[^a-z0-9]", "_", browser_type.lower())
+        screenshot_path = f"static/screenshots/home_{safe_browser}_{timestamp}.png"
         await page.screenshot(path=screenshot_path, full_page=True)
 
         cleaned_html: str = await page.evaluate('''() => {
@@ -73,9 +78,6 @@ async def _crawl_single_browser(
             return clone.innerHTML;
         }''')
 
-        await context.close()
-        await browser.close()
-
         ai_report: list[dict[str, Any]] = []
         ai_error: str | None = None
         if ai_model and api_key:
@@ -83,6 +85,27 @@ async def _crawl_single_browser(
                 ai_report = await analyze_ui(screenshot_path, cleaned_html[:15000], ai_model, api_key)
             except Exception as ai_exc:
                 ai_error = str(ai_exc)
+
+        _CROP_PADDING = 30
+        for idx, bug in enumerate(ai_report):
+            selector = (bug.get("element_selector") or "").strip()
+            if not selector:
+                continue
+            try:
+                bbox = await page.locator(selector).first.bounding_box()
+                if bbox:
+                    x = max(0, bbox["x"] - _CROP_PADDING)
+                    y = max(0, bbox["y"] - _CROP_PADDING)
+                    w = bbox["width"] + 2 * _CROP_PADDING
+                    h = bbox["height"] + 2 * _CROP_PADDING
+                    crop_path = f"static/screenshots/crop_{safe_browser}_{timestamp}_{idx}.png"
+                    await page.screenshot(path=crop_path, clip={"x": x, "y": y, "width": w, "height": h})
+                    bug["screenshot_crop"] = crop_path
+            except Exception:
+                logger.debug("Could not capture crop for selector %r", selector, exc_info=True)
+
+        await context.close()
+        await browser.close()
 
         return {
             "status": "success",

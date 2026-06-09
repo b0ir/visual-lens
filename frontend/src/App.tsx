@@ -7,6 +7,7 @@ interface BugReport {
   description: string
   suggested_solution: string
   element_selector: string
+  screenshot_crop?: string
 }
 
 interface CrawlResult {
@@ -45,6 +46,7 @@ function App() {
   const [result, setResult] = useState<CrawlResult[] | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [targetBrowser, setTargetBrowser] = useState('all')
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('VL_DARK_MODE')
     return saved !== null ? saved === 'true' : (window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
@@ -230,7 +232,7 @@ function App() {
 
   const DEDUP_THRESHOLD = 0.65
 
-  type BugEntry = { desc: string; solution: string; element: string; browsers: string[] }
+  type BugEntry = { desc: string; solution: string; element: string; browsers: string[]; screenshot?: string }
 
   const getAggregatedBugs = (): BugEntry[] => {
     if (!result) return []
@@ -267,7 +269,13 @@ function App() {
         }
 
         // 3. New unique bug.
-        const entry: BugEntry = { desc: bug.description, solution: bug.suggested_solution, element: bug.element_selector, browsers: [res.browser] }
+        const entry: BugEntry = {
+          desc: bug.description,
+          solution: bug.suggested_solution,
+          element: bug.element_selector,
+          browsers: [res.browser],
+          screenshot: bug.screenshot_crop ? `${API_BASE}/${bug.screenshot_crop}` : undefined,
+        }
         if (selectorKey) bySelector[selectorKey] = entry
         byDesc[descKey] = entry
       })
@@ -400,6 +408,14 @@ function App() {
                         <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400 font-medium">
                           <Lightbulb size={16} /> {bug.solution}
                         </div>
+                        {bug.screenshot && (
+                          <button
+                            onClick={() => setLightboxImage(bug.screenshot!)}
+                            className="mt-4 block w-28 h-16 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700 hover:border-violet-400 dark:hover:border-violet-500 hover:opacity-90 transition"
+                          >
+                            <img src={bug.screenshot} alt="element crop" className="w-full h-full object-cover" />
+                          </button>
+                        )}
                       </div>
                       <div className="flex flex-col gap-2 min-w-[120px]">
                         <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider text-center">Affected Engines</span>
@@ -427,6 +443,24 @@ function App() {
           </div>
         )}
       </div>
+
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-6"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-full" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setLightboxImage(null)}
+              className="absolute -top-3 -right-3 bg-zinc-800 dark:bg-zinc-700 text-white rounded-full p-1.5 hover:bg-zinc-600 dark:hover:bg-zinc-500 transition z-10"
+              aria-label="Close"
+            >
+              <X size={14} />
+            </button>
+            <img src={lightboxImage} alt="element crop" className="max-w-full max-h-[85vh] rounded-xl shadow-2xl" />
+          </div>
+        </div>
+      )}
 
       <footer className="mt-12 py-8 flex justify-center border-t border-zinc-200 dark:border-zinc-800/80">
         <a href="https://github.com/b0ir/visual-lens" target="_blank" rel="noreferrer" className="flex items-center gap-2 text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300 transition text-sm font-semibold">
