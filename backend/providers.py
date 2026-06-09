@@ -244,7 +244,20 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
                 if resp.status_code == 200:
-                    return {"valid": True}
+                    raw = resp.json().get("data", [])
+                    vision = sorted(
+                        [
+                            {"id": f"xai/{m['id']}", "name": _display_name(m["id"])}
+                            for m in raw
+                            if "vision" in m.get("id", "").lower()
+                        ],
+                        key=lambda x: x["id"],
+                        reverse=True,
+                    )
+                    return {
+                        "valid": True,
+                        "vision_models": vision or PROVIDERS["xai"]["vision_models"],
+                    }
                 return {"valid": False, "error": "Invalid API key"}
 
             elif provider_id == "openrouter":
