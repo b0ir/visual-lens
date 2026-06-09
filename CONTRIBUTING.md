@@ -16,7 +16,6 @@ npm run dev         # frontend on :3000, backend on :8000
 ## Reporting bugs
 
 Open an issue and include:
-- The URL you were analyzing
 - Which AI provider and model you used
 - What you expected vs. what actually happened
 - A screenshot if it helps
