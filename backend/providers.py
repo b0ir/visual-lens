@@ -235,7 +235,17 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
                 if resp.status_code == 200:
-                    return {"valid": True}
+                    raw = resp.json().get("data", [])
+                    # deepseek-chat (V3) supports image inputs; deepseek-reasoner (R1) is text-only.
+                    vision = [
+                        {"id": f"deepseek/{m['id']}", "name": _display_name(m["id"])}
+                        for m in raw
+                        if "chat" in m.get("id", "").lower()
+                    ]
+                    return {
+                        "valid": True,
+                        "vision_models": vision or PROVIDERS["deepseek"]["vision_models"],
+                    }
                 return {"valid": False, "error": "Invalid API key"}
 
             elif provider_id == "xai":
