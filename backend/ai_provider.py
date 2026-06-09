@@ -37,13 +37,13 @@ Note: minor typographic and sub-pixel rendering differences between browsers (e.
 Use EXACTLY one of these seven keywords as the symptom in every description. No synonyms, no free-form phrasing.
 Keywords: hidden, clipped, overlapping, misaligned, collapsed, low-contrast, image-broken
 
-hidden: element is not visible (off-screen, display none, opacity 0, or fully occluded)
-clipped: element or its text is partially cut off, overflowing, or truncated
-overlapping: element covers or is covered by another element unintentionally
-misaligned: element has wrong position, spacing, or size relative to its container or siblings
-collapsed: element layout broke (zero or near-zero height or width, wrapping failure)
-low-contrast: text or UI element has insufficient color contrast against its background
-image-broken: image fails to load or renders as a broken placeholder
+hidden: element is not visible to a user in the screenshot (off-screen, display none, opacity 0, or fully occluded by another element)
+clipped: element or its text is partially cut off, overflowing, or truncated — visible in the screenshot
+overlapping: element clearly covers or is covered by another element unintentionally — both elements must be visible
+misaligned: element has clearly visible and significant wrong position, spacing, or size relative to its container or siblings; not minor pixel-level variance
+collapsed: element layout visibly broke (zero or near-zero height or width, wrapping failure) — must be visible in the screenshot
+low-contrast: text or UI element has quantifiably poor contrast — the text is genuinely hard to read against its background in the screenshot
+image-broken: the browser's broken-image icon or gray placeholder must be visibly present in the screenshot — do NOT report based on DOM inference alone
 </symptom_vocabulary>
 
 <output_format>
