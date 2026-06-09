@@ -173,25 +173,31 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                 return {"valid": False, "error": "Invalid API key or insufficient permissions"}
 
             elif provider_id == "anthropic":
-                # Anthropic doesn't have a lightweight list endpoint,
-                # so we send a minimal messages request that will validate auth.
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
+                resp = await client.get(
+                    "https://api.anthropic.com/v1/models?limit=100",
                     headers={
                         "x-api-key": api_key,
                         "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": "claude-haiku-3.5",
-                        "max_tokens": 1,
-                        "messages": [{"role": "user", "content": "hi"}],
                     },
                 )
-                # 200 = valid (we got a response), 401 = bad key
-                if resp.status_code in (200, 400):
-                    # 400 can mean the request was valid auth-wise but bad params
-                    return {"valid": True}
+                if resp.status_code == 200:
+                    raw = resp.json().get("data", [])
+                    vision = sorted(
+                        [
+                            {
+                                "id": f"anthropic/{m['id']}",
+                                "name": m.get("display_name") or _display_name(m["id"]),
+                            }
+                            for m in raw
+                            if _ANTHROPIC_VISION_RE.search(m.get("id", ""))
+                        ],
+                        key=lambda x: x["id"],
+                        reverse=True,
+                    )
+                    return {
+                        "valid": True,
+                        "vision_models": vision or PROVIDERS["anthropic"]["vision_models"],
+                    }
                 if resp.status_code == 401:
                     return {"valid": False, "error": "Invalid API key"}
                 return {"valid": False, "error": f"Unexpected response (status {resp.status_code})"}
