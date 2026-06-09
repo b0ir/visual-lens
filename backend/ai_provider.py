@@ -27,9 +27,10 @@ Visual bugs include: overlapping or clipped text, broken layout, misaligned elem
 </task>
 
 <process>
-1. Examine the screenshot carefully for any visual anomalies
-2. Cross-reference each anomaly with the DOM to identify the responsible element
-3. For each bug found, pick the single best symptom keyword from the vocabulary below, then record the description, selector, and fix
+1. Examine the screenshot for clearly visible anomalies. If you cannot see the problem in the screenshot, do not report it — DOM analysis alone is not sufficient.
+2. Cross-reference each confirmed visual anomaly with the DOM to identify the responsible element.
+3. For each bug found, pick the single best symptom keyword from the vocabulary below, then record the description, selector, and fix.
+Note: minor typographic and sub-pixel rendering differences between browsers (e.g., font hinting, 1-2px position variance) are NOT bugs. Only report cross-browser differences that visibly impact layout or usability.
 </process>
 
 <symptom_vocabulary>
