@@ -9,6 +9,7 @@ for provider configuration.
 import httpx
 import logging
 import re
+from litellm import supports_vision
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,12 +35,6 @@ def _display_name(raw_id: str) -> str:
             parts.append(p.title())
     return ' '.join(parts)
 
-
-# Model families that support image inputs on OpenAI.
-# Checked as exact match OR prefix + "-" to avoid matching e.g. "gpt-4" for "gpt-4.1".
-_OPENAI_VISION_ROOTS = frozenset({
-    "gpt-4o", "gpt-4.1", "gpt-4-vision", "o4", "o1", "chatgpt-4o",
-})
 
 # claude-3.x and claude-(opus|sonnet|haiku)-4+ all support vision.
 _ANTHROPIC_VISION_RE = re.compile(
@@ -159,10 +154,7 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                         [
                             {"id": f"openai/{m['id']}", "name": _display_name(m["id"])}
                             for m in raw
-                            if any(
-                                m["id"] == root or m["id"].startswith(root + "-")
-                                for root in _OPENAI_VISION_ROOTS
-                            )
+                            if supports_vision(f"openai/{m['id']}")
                         ],
                         key=lambda x: x["id"],
                     )
