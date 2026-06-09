@@ -1,7 +1,7 @@
 # VisualLens
 
 [![CI](https://github.com/b0ir/visual-lens/actions/workflows/ci.yml/badge.svg)](https://github.com/b0ir/visual-lens/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: ELv2](https://img.shields.io/badge/License-Elastic_2.0-blue.svg)](LICENSE)
 
 An autonomous, AI-powered visual regression and UI testing agent. It crawls web pages, captures screenshots across multiple rendering engines (Chromium, Firefox, Safari (WebKit)) concurrently, and uses multimodal vision LLMs to detect UI/UX bugs, broken layouts, and overlapping elements.
 
@@ -94,6 +94,10 @@ Edit `backend/providers.py` and add an entry to the `PROVIDERS` dict. No other f
 - **SSRF protection.** Submitted URLs are validated before any browser visits them; requests to private, loopback, or reserved addresses are rejected.
 - **Configurable CORS.** Allowed origins default to `http://localhost:3000` and can be set via the `ALLOWED_ORIGINS` environment variable (see `.env.example`).
 
+## Contributing
+
+Contributions are welcome — bugs, features, questions, all of it. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
+
 ## License
 
-[MIT](LICENSE) - Use freely, modify as needed, contribute back if you can.
+Licensed under the [Elastic License 2.0](LICENSE) (source-available). You can use it, fork it, modify it, and distribute it. Two things you cannot do: offer it as a hosted/managed service, or remove the licensing notices.
