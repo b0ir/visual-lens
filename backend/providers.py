@@ -204,10 +204,29 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
 
             elif provider_id == "gemini":
                 resp = await client.get(
-                    f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+                    f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}&pageSize=100"
                 )
                 if resp.status_code == 200:
-                    return {"valid": True}
+                    raw = resp.json().get("models", [])
+                    vision = []
+                    for m in raw:
+                        raw_id = m.get("name", "").removeprefix("models/")
+                        methods = m.get("supportedGenerationMethods", [])
+                        if "generateContent" not in methods:
+                            continue
+                        if any(skip in raw_id for skip in ("embedding", "aqa")):
+                            continue
+                        # gemini-1.5+ and gemini-2.x support multimodal inputs;
+                        # older gemini-1.0 models are text-only except the explicit -vision variant.
+                        if not re.search(r'gemini-(1\.5|2)', raw_id) and "vision" not in raw_id:
+                            continue
+                        display = m.get("displayName") or _display_name(raw_id)
+                        vision.append({"id": f"gemini/{raw_id}", "name": display})
+                    vision.sort(key=lambda x: x["id"], reverse=True)
+                    return {
+                        "valid": True,
+                        "vision_models": vision or PROVIDERS["gemini"]["vision_models"],
+                    }
                 return {"valid": False, "error": "Invalid API key"}
 
             elif provider_id == "deepseek":
