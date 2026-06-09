@@ -291,7 +291,19 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
                 if resp.status_code == 200:
-                    return {"valid": True}
+                    raw = resp.json().get("data", [])
+                    vision = sorted(
+                        [
+                            {"id": f"nvidia_nim/{m['id']}", "name": _display_name(m["id"])}
+                            for m in raw
+                            if "vision" in m.get("id", "").lower()
+                        ],
+                        key=lambda x: x["id"],
+                    )
+                    return {
+                        "valid": True,
+                        "vision_models": vision or PROVIDERS["nvidia"]["vision_models"],
+                    }
                 return {"valid": False, "error": "Invalid API key"}
 
             else:
