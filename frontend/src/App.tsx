@@ -436,8 +436,14 @@ function App() {
                 <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">No visual bugs detected. The UI looks great across all tested engines.</p>
               </div>
             ) : !isProcessing ? (
-              <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 p-8 rounded-3xl mb-8 flex items-center justify-center">
-                <p className="text-lg font-bold text-amber-700 dark:text-amber-400">Analysis incomplete — one or more browsers returned errors.</p>
+              <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 p-6 rounded-3xl mb-8">
+                <p className="text-base font-bold text-amber-700 dark:text-amber-400 mb-3">Analysis incomplete — one or more browsers returned errors.</p>
+                {result && result.filter(r => r.status === 'error' || r.ai_error).map(r => (
+                  <div key={r.browser} className="mt-2 flex gap-2 text-sm text-amber-900 dark:text-amber-200">
+                    <span className="font-semibold capitalize shrink-0">{browserLabel(r.browser)}:</span>
+                    <span className="font-mono break-all">{r.error ?? r.ai_error}</span>
+                  </div>
+                ))}
               </div>
             ) : null}
           </div>
