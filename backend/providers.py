@@ -8,9 +8,38 @@ for provider configuration.
 
 import httpx
 import logging
+import re
+from litellm import supports_vision
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _display_name(raw_id: str) -> str:
+    """Generate a human-readable display name from a raw model ID."""
+    name = raw_id
+    # Strip trailing date stamps like -2024-11-20 or -20241120
+    name = re.sub(r'[-_]\d{4}-\d{2}-\d{2}$', '', name)
+    name = re.sub(r'[-_]\d{8}$', '', name)
+    # Drop provider prefix (e.g. "meta/" from "meta/llama-...")
+    if '/' in name:
+        name = name.rsplit('/', 1)[-1]
+    name = name.replace('-', ' ').replace('_', ' ')
+    parts = []
+    for p in name.split():
+        if p.lower() == 'gpt':
+            parts.append('GPT')
+        elif p.lower() == 'ai':
+            parts.append('AI')
+        else:
+            parts.append(p.title())
+    return ' '.join(parts)
+
+
+# claude-3.x and claude-(opus|sonnet|haiku)-4+ all support vision.
+_ANTHROPIC_VISION_RE = re.compile(
+    r'claude-(?:3|opus-[4-9]|sonnet-[4-9]|haiku-[4-9])'
+)
 
 
 PROVIDERS = {
@@ -120,39 +149,76 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
                 if resp.status_code == 200:
-                    return {"valid": True}
+                    raw = resp.json().get("data", [])
+                    vision = sorted(
+                        [
+                            {"id": f"openai/{m['id']}", "name": _display_name(m["id"])}
+                            for m in raw
+                            if supports_vision(f"openai/{m['id']}")
+                        ],
+                        key=lambda x: x["id"],
+                    )
+                    return {
+                        "valid": True,
+                        "vision_models": vision or PROVIDERS["openai"]["vision_models"],
+                    }
                 return {"valid": False, "error": "Invalid API key or insufficient permissions"}
 
             elif provider_id == "anthropic":
-                # Anthropic doesn't have a lightweight list endpoint,
-                # so we send a minimal messages request that will validate auth.
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
+                resp = await client.get(
+                    "https://api.anthropic.com/v1/models?limit=100",
                     headers={
                         "x-api-key": api_key,
                         "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": "claude-haiku-3.5",
-                        "max_tokens": 1,
-                        "messages": [{"role": "user", "content": "hi"}],
                     },
                 )
-                # 200 = valid (we got a response), 401 = bad key
-                if resp.status_code in (200, 400):
-                    # 400 can mean the request was valid auth-wise but bad params
-                    return {"valid": True}
+                if resp.status_code == 200:
+                    raw = resp.json().get("data", [])
+                    vision = sorted(
+                        [
+                            {
+                                "id": f"anthropic/{m['id']}",
+                                "name": m.get("display_name") or _display_name(m["id"]),
+                            }
+                            for m in raw
+                            if _ANTHROPIC_VISION_RE.search(m.get("id", ""))
+                        ],
+                        key=lambda x: x["id"],
+                        reverse=True,
+                    )
+                    return {
+                        "valid": True,
+                        "vision_models": vision or PROVIDERS["anthropic"]["vision_models"],
+                    }
                 if resp.status_code == 401:
                     return {"valid": False, "error": "Invalid API key"}
                 return {"valid": False, "error": f"Unexpected response (status {resp.status_code})"}
 
             elif provider_id == "gemini":
                 resp = await client.get(
-                    f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+                    f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}&pageSize=100"
                 )
                 if resp.status_code == 200:
-                    return {"valid": True}
+                    raw = resp.json().get("models", [])
+                    vision = []
+                    for m in raw:
+                        raw_id = m.get("name", "").removeprefix("models/")
+                        methods = m.get("supportedGenerationMethods", [])
+                        if "generateContent" not in methods:
+                            continue
+                        if any(skip in raw_id for skip in ("embedding", "aqa")):
+                            continue
+                        # gemini-1.5+ and gemini-2.x support multimodal inputs;
+                        # older gemini-1.0 models are text-only except the explicit -vision variant.
+                        if not re.search(r'gemini-(1\.5|2)', raw_id) and "vision" not in raw_id:
+                            continue
+                        display = m.get("displayName") or _display_name(raw_id)
+                        vision.append({"id": f"gemini/{raw_id}", "name": display})
+                    vision.sort(key=lambda x: x["id"], reverse=True)
+                    return {
+                        "valid": True,
+                        "vision_models": vision or PROVIDERS["gemini"]["vision_models"],
+                    }
                 return {"valid": False, "error": "Invalid API key"}
 
             elif provider_id == "deepseek":
@@ -161,7 +227,17 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
                 if resp.status_code == 200:
-                    return {"valid": True}
+                    raw = resp.json().get("data", [])
+                    # deepseek-chat (V3) supports image inputs; deepseek-reasoner (R1) is text-only.
+                    vision = [
+                        {"id": f"deepseek/{m['id']}", "name": _display_name(m["id"])}
+                        for m in raw
+                        if "chat" in m.get("id", "").lower()
+                    ]
+                    return {
+                        "valid": True,
+                        "vision_models": vision or PROVIDERS["deepseek"]["vision_models"],
+                    }
                 return {"valid": False, "error": "Invalid API key"}
 
             elif provider_id == "xai":
@@ -170,7 +246,20 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
                 if resp.status_code == 200:
-                    return {"valid": True}
+                    raw = resp.json().get("data", [])
+                    vision = sorted(
+                        [
+                            {"id": f"xai/{m['id']}", "name": _display_name(m["id"])}
+                            for m in raw
+                            if "vision" in m.get("id", "").lower()
+                        ],
+                        key=lambda x: x["id"],
+                        reverse=True,
+                    )
+                    return {
+                        "valid": True,
+                        "vision_models": vision or PROVIDERS["xai"]["vision_models"],
+                    }
                 return {"valid": False, "error": "Invalid API key"}
 
             elif provider_id == "openrouter":
@@ -194,7 +283,19 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
                 if resp.status_code == 200:
-                    return {"valid": True}
+                    raw = resp.json().get("data", [])
+                    vision = sorted(
+                        [
+                            {"id": f"nvidia_nim/{m['id']}", "name": _display_name(m["id"])}
+                            for m in raw
+                            if "vision" in m.get("id", "").lower()
+                        ],
+                        key=lambda x: x["id"],
+                    )
+                    return {
+                        "valid": True,
+                        "vision_models": vision or PROVIDERS["nvidia"]["vision_models"],
+                    }
                 return {"valid": False, "error": "Invalid API key"}
 
             else:

@@ -77,7 +77,7 @@ export default function SettingsModal({
     setApiKey(savedKey)
     setVerifyStatus(savedKey ? 'valid' : 'idle')
     setModelId(localStorage.getItem(`VL_MODEL_${pid}`) || '')
-    setStep(2)
+    setStep(savedKey ? 3 : 2)
   }
 
   const handleVerify = async () => {
