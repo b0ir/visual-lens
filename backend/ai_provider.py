@@ -55,7 +55,7 @@ Each bug object must have exactly these three fields:
 "suggested_solution": a concrete technical fix (free-form)
 
 If there are no bugs respond with: {"bugs": []}
-Important: err on the side of reporting potential bugs. A missed bug is worse than a false positive in a QA context.
+Important: only report bugs you can clearly see in the screenshot. Visual confirmation is required — do not infer bugs from DOM alone. When in doubt, do not report. A false positive is worse than a missed bug.
 </output_format>
 
 <example>
