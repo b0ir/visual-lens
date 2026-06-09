@@ -8,9 +8,43 @@ for provider configuration.
 
 import httpx
 import logging
+import re
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _display_name(raw_id: str) -> str:
+    """Generate a human-readable display name from a raw model ID."""
+    name = raw_id
+    # Strip trailing date stamps like -2024-11-20 or -20241120
+    name = re.sub(r'[-_]\d{4}-\d{2}-\d{2}$', '', name)
+    name = re.sub(r'[-_]\d{8}$', '', name)
+    # Drop provider prefix (e.g. "meta/" from "meta/llama-...")
+    if '/' in name:
+        name = name.rsplit('/', 1)[-1]
+    name = name.replace('-', ' ').replace('_', ' ')
+    parts = []
+    for p in name.split():
+        if p.lower() == 'gpt':
+            parts.append('GPT')
+        elif p.lower() == 'ai':
+            parts.append('AI')
+        else:
+            parts.append(p.title())
+    return ' '.join(parts)
+
+
+# Model families that support image inputs on OpenAI.
+# Checked as exact match OR prefix + "-" to avoid matching e.g. "gpt-4" for "gpt-4.1".
+_OPENAI_VISION_ROOTS = frozenset({
+    "gpt-4o", "gpt-4.1", "gpt-4-vision", "o4", "o1", "chatgpt-4o",
+})
+
+# claude-3.x and claude-(opus|sonnet|haiku)-4+ all support vision.
+_ANTHROPIC_VISION_RE = re.compile(
+    r'claude-(?:3|opus-[4-9]|sonnet-[4-9]|haiku-[4-9])'
+)
 
 
 PROVIDERS = {
@@ -120,7 +154,22 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
                 if resp.status_code == 200:
-                    return {"valid": True}
+                    raw = resp.json().get("data", [])
+                    vision = sorted(
+                        [
+                            {"id": f"openai/{m['id']}", "name": _display_name(m["id"])}
+                            for m in raw
+                            if any(
+                                m["id"] == root or m["id"].startswith(root + "-")
+                                for root in _OPENAI_VISION_ROOTS
+                            )
+                        ],
+                        key=lambda x: x["id"],
+                    )
+                    return {
+                        "valid": True,
+                        "vision_models": vision or PROVIDERS["openai"]["vision_models"],
+                    }
                 return {"valid": False, "error": "Invalid API key or insufficient permissions"}
 
             elif provider_id == "anthropic":
