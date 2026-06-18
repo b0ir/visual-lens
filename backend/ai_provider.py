@@ -27,35 +27,37 @@ Visual bugs include: overlapping or clipped text, broken layout, misaligned elem
 </task>
 
 <process>
-1. Examine the screenshot carefully for any visual anomalies
-2. Cross-reference each anomaly with the DOM to identify the responsible element
-3. For each bug found, pick the single best symptom keyword from the vocabulary below, then record the description, selector, and fix
+1. Examine the screenshot for clearly visible anomalies. If you cannot see the problem in the screenshot, do not report it — DOM analysis alone is not sufficient.
+2. Cross-reference each confirmed visual anomaly with the DOM to identify the responsible element.
+3. For each bug found, pick the single best symptom keyword from the vocabulary below, then record the description, selector, and fix.
+Note: minor typographic and sub-pixel rendering differences between browsers (e.g., font hinting, 1-2px position variance) are NOT bugs. Only report cross-browser differences that visibly impact layout or usability.
 </process>
 
 <symptom_vocabulary>
 Use EXACTLY one of these seven keywords as the symptom in every description. No synonyms, no free-form phrasing.
 Keywords: hidden, clipped, overlapping, misaligned, collapsed, low-contrast, image-broken
 
-hidden: element is not visible (off-screen, display none, opacity 0, or fully occluded)
-clipped: element or its text is partially cut off, overflowing, or truncated
-overlapping: element covers or is covered by another element unintentionally
-misaligned: element has wrong position, spacing, or size relative to its container or siblings
-collapsed: element layout broke (zero or near-zero height or width, wrapping failure)
-low-contrast: text or UI element has insufficient color contrast against its background
-image-broken: image fails to load or renders as a broken placeholder
+hidden: element is not visible to a user in the screenshot (off-screen, display none, opacity 0, or fully occluded by another element)
+clipped: element or its text is partially cut off, overflowing, or truncated — visible in the screenshot
+overlapping: element clearly covers or is covered by another element unintentionally — both elements must be visible
+misaligned: element has clearly visible and significant wrong position, spacing, or size relative to its container or siblings; not minor pixel-level variance
+collapsed: element layout visibly broke (zero or near-zero height or width, wrapping failure) — must be visible in the screenshot
+low-contrast: text or UI element has quantifiably poor contrast — the text is genuinely hard to read against its background in the screenshot
+image-broken: the browser's broken-image icon or gray placeholder must be visibly present in the screenshot — do NOT report based on DOM inference alone
 </symptom_vocabulary>
 
 <output_format>
 You MUST respond with a single valid JSON object. No prose, no markdown, no code fences, no explanations before or after. Just the JSON object.
 
 The object must have exactly one key "bugs" whose value is an array of bug objects.
-Each bug object must have exactly these three fields:
+Each bug object must have exactly these four fields:
 "description": start with the element name (NEVER a leading "The", "A", or "An"), include exactly one symptom keyword from the vocabulary, no trailing punctuation, use identical wording regardless of which browser rendered the page. Format: "[Element] [symptom-keyword] on [location]" or "[Element] [symptom-keyword]". When the bug appears on small or narrow screens always write "on narrow viewports (mobile devices)". Examples: "Search bar clipped on narrow viewports (mobile devices)", "Logo misaligned in header"
 "element_selector": the HTML tag, id, or class responsible (infer from the DOM)
 "suggested_solution": a concrete technical fix (free-form)
+"confidence": integer 1-5, where 5 = certain (clearly visible in screenshot), 3 = probable, 1 = speculative. Only report bugs you would rate 3 or above.
 
 If there are no bugs respond with: {"bugs": []}
-Important: err on the side of reporting potential bugs. A missed bug is worse than a false positive in a QA context.
+Important: only report bugs you can clearly see in the screenshot. Visual confirmation is required — do not infer bugs from DOM alone. When in doubt, do not report. A false positive is worse than a missed bug.
 </output_format>
 
 <example>
@@ -63,12 +65,14 @@ Important: err on the side of reporting potential bugs. A missed bug is worse th
   {
     "description": "Submit button clipped on narrow viewports (mobile devices)",
     "element_selector": "button#submit-btn",
-    "suggested_solution": "Remove fixed width; use horizontal padding instead so the button scales with its label"
+    "suggested_solution": "Remove fixed width; use horizontal padding instead so the button scales with its label",
+    "confidence": 5
   },
   {
     "description": "Navigation bar overlapping hero image on scroll",
     "element_selector": ".navbar",
-    "suggested_solution": "Add position: sticky and z-index: 100 to .navbar so it stays above page content"
+    "suggested_solution": "Add position: sticky and z-index: 100 to .navbar so it stays above page content",
+    "confidence": 4
   }
 ]}
 </example>
@@ -173,7 +177,17 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
         if bugs is None:
             logger.warning(f"Model returned non-JSON content: {content[:200]!r}")
             return []
-        return bugs
+        # Drop low-confidence detections and strip the internal confidence field.
+        filtered = []
+        for b in bugs:
+            try:
+                if int(b.get("confidence", 3)) < 3:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            b.pop("confidence", None)
+            filtered.append(b)
+        return filtered
 
     except Exception as e:
         error_msg = str(e)
