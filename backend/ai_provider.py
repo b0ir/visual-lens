@@ -184,7 +184,7 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
                 if int(b.get("confidence", 3)) < 3:
                     continue
             except (TypeError, ValueError):
-                pass
+                continue
             b.pop("confidence", None)
             filtered.append(b)
         return filtered
