@@ -286,6 +286,10 @@ function App() {
 
   const aggregatedBugs = getAggregatedBugs()
 
+  const erroredResults = result ? result.filter(r => r.status === 'error' || r.ai_error) : []
+  const errorMessages = erroredResults.map(r => r.error ?? r.ai_error ?? '')
+  const allErrorsSame = errorMessages.length > 0 && errorMessages.every(m => m === errorMessages[0])
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 p-8 flex flex-col transition-colors duration-200">
       <div className="max-w-6xl mx-auto w-full flex-grow">
@@ -438,12 +442,16 @@ function App() {
             ) : !isProcessing ? (
               <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 p-6 rounded-3xl mb-8">
                 <p className="text-base font-bold text-amber-700 dark:text-amber-400 mb-3">Analysis incomplete — one or more browsers returned errors.</p>
-                {result && result.filter(r => r.status === 'error' || r.ai_error).map(r => (
-                  <div key={r.browser} className="mt-2 flex gap-2 text-sm text-amber-900 dark:text-amber-200">
-                    <span className="font-semibold capitalize shrink-0">{browserLabel(r.browser)}:</span>
-                    <span className="font-mono break-all">{r.error ?? r.ai_error}</span>
-                  </div>
-                ))}
+                {allErrorsSame ? (
+                  <p className="mt-2 text-sm font-mono break-all text-amber-900 dark:text-amber-200">{errorMessages[0]}</p>
+                ) : (
+                  erroredResults.map(r => (
+                    <div key={r.browser} className="mt-2 flex gap-2 text-sm text-amber-900 dark:text-amber-200">
+                      <span className="font-semibold capitalize shrink-0">{browserLabel(r.browser)}:</span>
+                      <span className="font-mono break-all">{r.error ?? r.ai_error}</span>
+                    </div>
+                  ))
+                )}
               </div>
             ) : null}
           </div>
