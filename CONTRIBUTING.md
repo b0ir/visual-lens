@@ -1,8 +1,8 @@
 # Contributing
 
-## Just open the PR
+## Collaboration is welcome
 
-Don't talk yourself out of it. Found a bug? Report it. Have an idea? Open an issue. Wrote a fix? Submit the PR. A rough draft that ships is worth more than a polished plan that never does. No contribution is too small.
+I really value feedback, ideas, comments, and code contributions. No contribution is too small. Found a bug? [Report it](https://github.com/b0ir/visual-lens/issues). Have an idea? Open an [issue](https://github.com/b0ir/visual-lens/issues). Wrote a fix? Submit a [PR](https://github.com/b0ir/visual-lens/pulls). Even if you're not sure about the format or approach, I prefer getting it anyway. Don't talk yourself out of it.
 
 ## Dev setup
 
@@ -15,14 +15,15 @@ npm run dev         # frontend on :3000, backend on :8000
 
 ## Reporting bugs
 
-Open an issue and include:
-- Which AI provider and model you used
-- What you expected vs. what actually happened
-- A screenshot if it helps
+Open an [issue](https://github.com/b0ir/visual-lens/issues) and include:
+
+- Which AI provider and model you used.
+- What you expected vs. what actually happened.
+- A screenshot if it helps.
 
 ## Suggesting features
 
-Open an issue with a short description of the feature and the problem it solves. No spec needed — a sentence is enough to start a conversation.
+Open an [issue](https://github.com/b0ir/visual-lens/issues) with a short description of the feature and the problem it solves.
 
 ## Submitting a PR
 
@@ -37,7 +38,3 @@ Open an issue with a short description of the feature and the problem it solves.
 ## Licensing
 
 By submitting a pull request, you agree that your contribution will be licensed under the same [Elastic License 2.0](LICENSE) terms as this project.
-
-## Say hi
-
-Open source works better when people actually talk to each other. If you have a question, a suggestion, or just want to say something — open an issue or start a discussion. Don't overthink it.
