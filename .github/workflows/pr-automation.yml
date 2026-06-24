@@ -75,7 +75,7 @@ jobs:
     name: Backend Deps
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
@@ -95,7 +95,7 @@ jobs:
       typecheck_result:  ${{ steps.typecheck.outcome }}
       build_result:      ${{ steps.build.outcome }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:
@@ -152,7 +152,7 @@ jobs:
     name: AI Code Review
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Review with Qwen and post comment
         env:
