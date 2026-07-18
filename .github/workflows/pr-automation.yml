@@ -77,12 +77,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v8.3.2
         with:
-          python-version: "3.12"
+          python-version: "3.14"
+          working-directory: backend
 
-      - name: Validate pip resolution
-        run: pip install --dry-run -r backend/requirements.txt
+      - name: Validate dependency resolution
+        run: uv lock --check
+        working-directory: backend
 
   # ─────────────────────────────────────────────
   # 3. Quick checks — lint, type-check, build
