@@ -3,9 +3,9 @@ name = "visual-lens-backend"
 version = "1.0.0"
 requires-python = ">=3.14"
 dependencies = [
-  "fastapi>=0.137.1,<1.0",
+  "fastapi>=0.139.0,<1.0",
   "uvicorn[standard]>=0.51.0,<1.0",
-  "playwright>=1.60.0,<2.0",
+  "playwright>=1.61.0,<2.0",
   "python-dotenv>=1.0.1,<2.0",
   # Exact-pinned: litellm 1.83.7 is the newest release with Python 3.14 wheel
   # support (1.92.0+ declares Requires-Python <3.14 and only ships as an
