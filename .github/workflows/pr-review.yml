@@ -1,0 +1,51 @@
+name: PR Review
+
+# Auto-review exactly once, when a PR is opened or marked ready for review.
+# Never on push (`synchronize`) — re-reviews are on-demand via "@claude review"
+# comments, handled by claude-agent.yml.
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+
+jobs:
+  review:
+    # Same-repo branches only: fork PRs never run this (they also never receive
+    # secrets, by GitHub design — this condition just avoids noisy failed runs).
+    # Dependabot PRs are handled by dependabot-review.yml instead.
+    if: >
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.draft == false &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Review PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
+
+            Focus on, in priority order:
+            1. Bugs and correctness issues in the changed code
+            2. Security problems (injection, secrets in code, unsafe permissions)
+            3. Violations of repo conventions (see CLAUDE.md / rules if present)
+            4. Missing or inadequate tests for the changes
+
+            Read the diff with `gh pr diff ${{ github.event.pull_request.number }}`
+            and inspect surrounding files as needed. Then post ONE review comment
+            with `gh pr comment` — start it with a verdict line: PASS, WARN, or BLOCK,
+            followed by concise findings (file:line, one sentence each). Do not
+            comment on style nits a formatter would catch. If everything is fine,
+            say PASS with a one-line summary.
+          claude_args: |
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git log:*),Bash(git diff:*)"
