@@ -61,7 +61,10 @@ Polyglot Monorepo managed by a root `package.json`.
 
 ## Getting Started
 
-Requires Node.js and Python 3.
+Requires Node.js. The backend runs on Python 3.14, but you don't need to install Python
+yourself — the backend is managed with [`uv`](https://docs.astral.sh/uv/), which
+`setup:backend` installs automatically if it's missing, and which then downloads the
+pinned Python 3.14 interpreter itself. There is nothing Python-related to install by hand.
 
 ### 1. Setup
 
@@ -69,7 +72,9 @@ Requires Node.js and Python 3.
 npm run setup:all
 ```
 
-Installs Node and Python dependencies, creates a virtualenv, and downloads Playwright browsers.
+Installs Node dependencies, installs `uv` if needed, lets `uv` fetch Python 3.14 and
+create `backend/.venv`, installs backend dependencies from `backend/pyproject.toml` /
+`backend/uv.lock`, and downloads Playwright browsers.
 
 ### 2. Run
 

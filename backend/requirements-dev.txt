@@ -1,3 +1,0 @@
-# Development/test dependencies (not required to run the app).
-# Install with: pip install -r requirements-dev.txt
-pytest>=9.1.1,<10.0

@@ -8,10 +8,10 @@
     "frontend"
   ],
   "scripts": {
-    "setup:backend": "cd backend && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt && playwright install chromium firefox webkit",
+    "setup:backend": "bash backend/setup.sh",
     "setup:all": "npm install && npm run setup:backend",
     "start:frontend": "npm run dev --workspace=frontend -- --port 3000",
-    "start:backend": "backend/venv/bin/uvicorn main:app --app-dir backend --host 0.0.0.0 --port 8000 --reload --reload-dir backend",
+    "start:backend": "backend/.venv/bin/uvicorn main:app --app-dir backend --host 0.0.0.0 --port 8000 --reload --reload-dir backend",
     "dev": "concurrently -c \"blue.bold,green.bold\" -n \"FRONTEND,BACKEND\" \"npm run start:frontend\" \"npm run start:backend\""
   },
   "devDependencies": {

@@ -47,19 +47,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v8.3.2
         with:
-          python-version: '3.12'
+          python-version: '3.14'
+          working-directory: backend
+
+      - name: Check lockfile is up to date
+        run: uv lock --check
+        working-directory: backend
 
       - name: Install dependencies
-        run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt ruff
-
-      - name: Check dependency compatibility
-        run: pip check
+        run: uv sync --group dev
+        working-directory: backend
 
       - name: Lint
-        run: ruff check --select=E9,F63,F7,F82 backend/
+        run: uvx ruff check --select=E9,F63,F7,F82 backend/
 
       - name: Test
-        run: python -m pytest
+        run: uv run python -m pytest
         working-directory: backend

@@ -6,15 +6,16 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
 
-  - package-ecosystem: pip
+  - package-ecosystem: uv
     directory: /backend
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
     ignore:
-      # litellm 1.83.7 (max version on Python 3.14) exact-pins these packages.
-      # Bumping their floors independently causes ResolutionImpossible.
-      # Let litellm control these versions; update them only when litellm updates.
+      # litellm is exact-pinned in pyproject.toml (see the comment there) and
+      # exact-pins these packages itself. Bumping their floors independently
+      # causes ResolutionImpossible. Let litellm control these versions;
+      # update them only when litellm updates.
       - dependency-name: pydantic
       - dependency-name: python-dotenv
       - dependency-name: httpx
