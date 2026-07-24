@@ -39,10 +39,12 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             npm audit --audit-level=high --workspace=frontend && exit 0
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
             echo "npm audit attempt $attempt failed (registry may be flaking), retrying in 15s..."
             sleep 15
           done
-          exit 1
 
       - name: Build (includes tsc type-check)
         run: npm run build --workspace=frontend
