@@ -36,7 +36,15 @@ jobs:
         run: npm run lint --workspace=frontend
 
       - name: Audit dependencies
-        run: npm audit --audit-level=high --workspace=frontend
+        run: |
+          for attempt in 1 2 3; do
+            npm audit --audit-level=high --workspace=frontend && exit 0
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "npm audit attempt $attempt failed (registry may be flaking), retrying in 15s..."
+            sleep 15
+          done
 
       - name: Build (includes tsc type-check)
         run: npm run build --workspace=frontend
