@@ -286,7 +286,8 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                             continue
                         if model_id.endswith(":free") != is_free_tier:
                             continue
-                        vision.append({"id": f"openrouter/{model_id}", "name": m.get("name") or _display_name(model_id)})
+                        name = m.get("name") or _display_name(model_id.removesuffix(":free"))
+                        vision.append({"id": f"openrouter/{model_id}", "name": name})
                     vision.sort(key=lambda x: x["id"])
 
                 fallback_key = "free_vision_models" if is_free_tier else "vision_models"
