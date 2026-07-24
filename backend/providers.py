@@ -108,11 +108,12 @@ PROVIDERS = {
             {"id": "openrouter/meta-llama/llama-4-maverick", "name": "Llama 4 Maverick"},
             {"id": "openrouter/qwen/qwen-2.5-vl-72b-instruct", "name": "Qwen 2.5 VL 72B"},
         ],
-        # Models accessible without credits (OpenRouter :free-tier variants).
-        # These use the :free suffix which routes to providers that sponsor free access.
+        # Fallback only — used if the live catalog fetch in verify_api_key() fails.
+        # OpenRouter rotates which models carry the :free suffix, so this list goes
+        # stale; the ids below must always end in :free or free-tier keys get billed.
         "free_vision_models": [
-            {"id": "openrouter/meta-llama/llama-4-maverick", "name": "Llama 4 Maverick (Free)"},
-            {"id": "openrouter/meta-llama/llama-4-scout", "name": "Llama 4 Scout (Free)"},
+            {"id": "openrouter/google/gemma-4-31b-it:free", "name": "Gemma 4 31B (Free)"},
+            {"id": "openrouter/nvidia/nemotron-nano-12b-v2-vl:free", "name": "Nemotron Nano 12B VL (Free)"},
         ],
     },
     "nvidia": {
@@ -267,15 +268,33 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                     "https://openrouter.ai/api/v1/auth/key",
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
-                if resp.status_code == 200:
-                    key_data = resp.json().get("data", {})
-                    is_free_tier = key_data.get("is_free_tier", False)
-                    models_key = "free_vision_models" if is_free_tier else "vision_models"
-                    return {
-                        "valid": True,
-                        "vision_models": PROVIDERS["openrouter"].get(models_key, PROVIDERS["openrouter"]["vision_models"]),
-                    }
-                return {"valid": False, "error": "Invalid API key"}
+                if resp.status_code != 200:
+                    return {"valid": False, "error": "Invalid API key"}
+
+                key_data = resp.json().get("data", {})
+                is_free_tier = key_data.get("is_free_tier", False)
+
+                # Free-tier keys are only billable-safe on models carrying the
+                # :free suffix, and OpenRouter rotates that set over time — so
+                # query the live catalog instead of trusting a static list.
+                vision: list[dict[str, str]] = []
+                models_resp = await client.get("https://openrouter.ai/api/v1/models")
+                if models_resp.status_code == 200:
+                    for m in models_resp.json().get("data", []):
+                        model_id = m.get("id", "")
+                        if "image" not in m.get("architecture", {}).get("input_modalities", []):
+                            continue
+                        if model_id.endswith(":free") != is_free_tier:
+                            continue
+                        name = m.get("name") or _display_name(model_id.removesuffix(":free"))
+                        vision.append({"id": f"openrouter/{model_id}", "name": name})
+                    vision.sort(key=lambda x: x["id"])
+
+                fallback_key = "free_vision_models" if is_free_tier else "vision_models"
+                return {
+                    "valid": True,
+                    "vision_models": vision or PROVIDERS["openrouter"].get(fallback_key, PROVIDERS["openrouter"]["vision_models"]),
+                }
 
             elif provider_id == "nvidia":
                 resp = await client.get(
