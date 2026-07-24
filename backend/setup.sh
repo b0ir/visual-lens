@@ -35,4 +35,18 @@ if [ -d venv ] && [ ! -d .venv ]; then
 fi
 
 uv sync
-uv run playwright install chromium firefox webkit
+
+echo "Installing Playwright browsers (chromium, firefox, webkit)..."
+echo "This can take a few minutes on a first run, and may print nothing for a while — this script will confirm every 15s that it is still working."
+
+uv run playwright install chromium firefox webkit &
+playwright_pid=$!
+
+elapsed=0
+while kill -0 "$playwright_pid" 2>/dev/null; do
+  sleep 15
+  elapsed=$((elapsed + 15))
+  echo "Still installing Playwright browsers... (${elapsed}s elapsed)"
+done
+
+wait "$playwright_pid"
