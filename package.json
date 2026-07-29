@@ -15,6 +15,6 @@
     "dev": "concurrently -c \"blue.bold,green.bold\" -n \"FRONTEND,BACKEND\" \"npm run start:frontend\" \"npm run start:backend\""
   },
   "devDependencies": {
-    "concurrently": "^10.0.3"
+    "concurrently": "^10.0.4"
   }
 }
