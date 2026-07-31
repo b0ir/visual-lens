@@ -100,6 +100,9 @@ export default function SettingsModal({
             ...prev,
             [selectedProvider]: { ...prev[selectedProvider], vision_models: data.vision_models },
           }))
+          if (data.vision_models.length > 0 && !data.vision_models.some((m: { id: string }) => m.id === modelId)) {
+            setModelId(data.vision_models[0].id)
+          }
         }
         setStep(3)
       } else {
