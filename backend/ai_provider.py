@@ -85,6 +85,13 @@ Important: only report bugs you can clearly see in the screenshot. Visual confir
 VALID_CATEGORIES = {"hidden", "clipped", "overlapping", "misaligned", "collapsed", "low-contrast", "image-broken", "other"}
 
 
+def _normalize_category(category: Any) -> str:
+    """Return category lowercased if it's one of the known values, else "other"."""
+    if isinstance(category, str) and category.strip().lower() in VALID_CATEGORIES:
+        return category.strip().lower()
+    return "other"
+
+
 def _extract_bugs(content: str) -> list[dict[str, Any]] | None:
     """
     Try to parse bugs from a string that should contain JSON.
@@ -195,11 +202,7 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
             except (TypeError, ValueError):
                 continue
             b.pop("confidence", None)
-            category = b.get("category")
-            if not isinstance(category, str) or category.strip().lower() not in VALID_CATEGORIES:
-                b["category"] = "other"
-            else:
-                b["category"] = category.strip().lower()
+            b["category"] = _normalize_category(b.get("category"))
             filtered.append(b)
         return filtered
 
