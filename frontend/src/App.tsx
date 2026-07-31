@@ -242,7 +242,6 @@ function App() {
     const phrases = [
       'shipping cost',
       'product grid',
-      'vivo x fold6',
       'navigation bar',
       'campaign popup',
       'currency symbol',
@@ -250,6 +249,8 @@ function App() {
       'product card',
       'video overlay',
       'header logo',
+      'search input',
+      'search bar',
     ]
     return phrases.some(p => na.includes(p) && nb.includes(p))
   }
@@ -272,6 +273,11 @@ function App() {
 
         // Try to match against existing aggregated bugs
         const existing = aggregated.find((item) => {
+          // Do not merge bugs with different explicit categories
+          if (category !== 'other' && item.category !== 'other' && category !== item.category) {
+            return false
+          }
+
           const itemSel = item.element.toLowerCase().trim()
           const itemBase = extractBaseSelector(item.element)
 
@@ -469,7 +475,12 @@ function App() {
                   {aggregatedBugs.map((bug, idx) => (
                     <div key={idx} className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-violet-100 dark:border-zinc-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
                       <div className="flex-grow">
-                        <p className="text-lg font-bold text-zinc-900 dark:text-white mb-2">{bug.desc}</p>
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <span className="px-2.5 py-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-xs font-bold rounded-full capitalize border border-violet-200 dark:border-violet-800/50">
+                            {bug.category}
+                          </span>
+                          <p className="text-lg font-bold text-zinc-900 dark:text-white">{bug.desc}</p>
+                        </div>
                         <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 mb-3">
                           <Code size={16} /> <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md">{bug.element}</span>
                         </div>

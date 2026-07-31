@@ -321,19 +321,30 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                                     headers={"Authorization": f"Bearer {api_key}"},
                                     json={
                                         "model": model_id,
-                                        "messages": [{"role": "user", "content": "hi"}],
+                                        "messages": [
+                                            {
+                                                "role": "user",
+                                                "content": [
+                                                    {"type": "text", "text": "hi"},
+                                                    {
+                                                        "type": "image_url",
+                                                        "image_url": {
+                                                            "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                                                        },
+                                                    },
+                                                ],
+                                            }
+                                        ],
                                         "max_tokens": 1,
                                     },
                                     timeout=5.0,
                                 )
-                                # 404 indicates the model endpoint or function is retired/not found for account.
-                                if probe.status_code == 404:
+                                # Only 200 OK vision probes are considered usable models
+                                if probe.status_code != 200:
                                     return False
-                                # Fail open for transient errors (429 rate-limited, 5xx, timeouts)
-                                # to prevent network glitches from falsely excluding valid models.
                                 return True
                             except Exception:
-                                return True
+                                return False
 
                     results = await asyncio.gather(*[_is_usable(m) for m in candidates])
                     usable_models = [m for m, ok in zip(candidates, results) if ok]

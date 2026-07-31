@@ -1,5 +1,6 @@
 import base64
 import json
+import re
 from typing import Any
 import litellm
 from litellm import acompletion
@@ -31,6 +32,7 @@ Visual bugs include: overlapping or clipped text, broken layout, misaligned elem
 2. Cross-reference each confirmed visual anomaly with the DOM to identify the responsible element.
 3. For each bug found, write a free-form description of the symptom, classify it into the category list below, and record the description, category, selector, and fix.
 Note: minor typographic and sub-pixel rendering differences between browsers (e.g., font hinting, 1-2px position variance) are NOT bugs. Only report cross-browser differences that visibly impact layout or usability.
+CRITICAL RULE: Do NOT report non-visual functional issues, unclicked link URLs, HTTP status code errors, or external PDF link validity. You cannot determine if a link URL is working or broken from a screenshot alone — do NOT report link status issues.
 </process>
 
 <category_vocabulary>
@@ -54,13 +56,13 @@ The object must have exactly one key "bugs" whose value is an array of bug objec
 Each bug object must have exactly these five fields:
 "description": start with the element name (NEVER a leading "The", "A", or "An"), no trailing punctuation, use identical wording regardless of which browser rendered the page — describe the symptom freely in your own words. Format: "[Element] [symptom] on [location]" or "[Element] [symptom]". When the bug appears on small or narrow screens always write "on narrow viewports (mobile devices)". Examples: "Search bar overflows its container on narrow viewports (mobile devices)", "Logo sits noticeably off-center in header"
 "category": exactly one of: hidden, clipped, overlapping, misaligned, collapsed, low-contrast, image-broken, other — see <category_vocabulary> above
-"element_selector": a single syntactically valid CSS selector (standard CSS, parseable by document.querySelector — NOT jQuery-style pseudo-classes like :contains(), :visible, or :has-text()) that identifies the responsible component element. Prefer top-level component container selectors (e.g., "#some-id", ".shipping-cost", ".product-grid", ".product-card:nth-of-type(2)") over deep child tags (like img, span, .video-overlay) to ensure consistent selector identification across browser runs. Do not use a bare tag name (div, span, p) alone.
+"element_selector": a single syntactically valid CSS selector identifying the element. Elements in <dom_structure> contain explicit data-vl-id attributes (e.g. data-vl-id="12"). Always prefer using the data-vl-id attribute selector (e.g., '[data-vl-id="12"]') or explicit unique IDs/component selectors present in <dom_structure> so the element can be located deterministically without ambiguity. Never output generic utility class names (e.g. .w-full.py-2) alone or hallucinate selectors not in <dom_structure>.
 "suggested_solution": a concrete technical fix (free-form)
 "confidence": integer 1-5, where 5 = certain (clearly visible in screenshot), 3 = probable, 1 = speculative. Only report bugs you would rate 3 or above.
 
 If there are no bugs respond with: {"bugs": []}
 Important: only report bugs you can clearly see in the screenshot. Visual confirmation is required — do not infer bugs from DOM alone. When in doubt, do not report. A false positive is worse than a missed bug.
-CRITICAL: Never copy selectors or text from the example below. Every element_selector MUST be a real CSS selector present in the provided <dom_structure>.
+CRITICAL: Never copy selectors or text from the example below. Every element_selector MUST be present in the provided <dom_structure>.
 </output_format>
 
 <example>
@@ -202,6 +204,13 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
                     continue
             except (TypeError, ValueError):
                 continue
+
+            desc_lower = (b.get("description") or "").lower()
+            sol_lower = (b.get("suggested_solution") or "").lower()
+            if any(phrase in desc_lower or phrase in sol_lower for phrase in ("link is broken", "broken link", "url is broken", "link is dead", "invalid link")):
+                logger.warning(f"Filtering out non-visual link breakage hallucination: {b.get('description')!r}")
+                continue
+
             b.pop("confidence", None)
             b["category"] = _normalize_category(b.get("category"))
             filtered.append(b)
@@ -217,5 +226,13 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
             raise Exception("Authentication failed. Please verify your API key is correct.")
         elif "ContextWindowExceededError" in error_msg or "too large" in error_msg.lower():
             raise Exception("The page content is too large for this model's context window.")
+        elif "InternalServerError" in error_msg or "500" in error_msg or "Nvidia_nimException" in error_msg:
+            detail = ""
+            match = re.search(r"'(?:error|message)':\s*['\"]([^'\"]+)['\"]", error_msg)
+            if match:
+                detail = f": {match.group(1)}"
+            elif "InternalServerError" in error_msg:
+                detail = ": Provider server error (500)"
+            raise Exception(f"AI provider returned an error{detail}. Please try selecting a different vision model in Settings.")
 
-        raise Exception("AI API request failed. See backend logs for details.")
+        raise Exception(f"AI API request failed: {error_msg}")

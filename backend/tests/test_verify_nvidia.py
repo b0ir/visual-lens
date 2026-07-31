@@ -65,3 +65,27 @@ def test_nvidia_invalid_key_returns_error(monkeypatch):
     result = asyncio.run(providers.verify_api_key("nvidia", "nvapi-bad"))
 
     assert result == {"valid": False, "error": "Invalid API key"}
+
+
+def test_nvidia_filters_out_500_and_exception_models(monkeypatch):
+    BROKEN_500_MODEL = {"id": "nvidia/llama-3.1-nemotron-nano-vl-8b-v1"}
+    _patch_client(
+        monkeypatch,
+        models_response=httpx.Response(
+            200, json={"data": [VALID_VISION_MODEL, BROKEN_500_MODEL]}
+        ),
+        probe_responses={
+            "meta/llama-3.2-11b-vision-instruct": httpx.Response(200, json={"choices": []}),
+            "nvidia/llama-3.1-nemotron-nano-vl-8b-v1": httpx.Response(
+                500, json={"detail": "'NVLM_D2_Config' object has no attribute 'vocab_size'"}
+            ),
+        },
+    )
+
+    result = asyncio.run(providers.verify_api_key("nvidia", "nvapi-test"))
+
+    assert result["valid"] is True
+    ids = [m["id"] for m in result["vision_models"]]
+    assert "nvidia_nim/meta/llama-3.2-11b-vision-instruct" in ids
+    assert "nvidia_nim/nvidia/llama-3.1-nemotron-nano-vl-8b-v1" not in ids
+

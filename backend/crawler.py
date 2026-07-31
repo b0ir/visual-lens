@@ -63,6 +63,13 @@ async def _get_element_bbox(page: Any, selector: str) -> dict[str, Any] | None:
     """Instantly lookup an element's bounding rectangle via JS DOM evaluation,
     returning None immediately if the selector is invalid.
     Returns DOM existence, element coordinates, and page dimensions for crop clamping."""
+    sel = selector.strip()
+    if sel.isdigit():
+        sel = f'[data-vl-id="{sel}"]'
+    elif sel.startswith("data-vl-id="):
+        val = sel.split("=", 1)[1].strip("\"'")
+        sel = f'[data-vl-id="{val}"]'
+
     try:
         return await page.evaluate(
             """(sel) => {
@@ -87,7 +94,7 @@ async def _get_element_bbox(page: Any, selector: str) -> dict[str, Any] | None:
                     return null;
                 }
             }""",
-            selector,
+            sel,
         )
     except Exception:
         return None
@@ -113,6 +120,17 @@ async def _crawl_single_browser(
         timestamp = int(time.time())
         await page.goto(start_url, wait_until="networkidle")
 
+        # Inject data-vl-id grounding attributes into DOM elements for accurate AI selector matching
+        await page.evaluate("""() => {
+            let idCounter = 1;
+            const elements = document.body ? document.body.querySelectorAll('*') : [];
+            elements.forEach((el) => {
+                if (el.children.length === 0 || el.id || el.className || ['a', 'button', 'input', 'select', 'textarea', 'img', 'h1', 'h2', 'h3', 'p', 'form', 'nav', 'header', 'footer', 'section'].includes(el.tagName.toLowerCase())) {
+                    el.setAttribute('data-vl-id', String(idCounter++));
+                }
+            });
+        }""")
+
         os.makedirs("static/screenshots", exist_ok=True)
         safe_browser = re.sub(r"[^a-z0-9]", "_", browser_type.lower())
         screenshot_path = f"static/screenshots/home_{safe_browser}_{timestamp}.png"
@@ -122,6 +140,11 @@ async def _crawl_single_browser(
             const clone = document.documentElement.cloneNode(true);
             const elementsToRemove = clone.querySelectorAll('script, style, svg, path, link, meta, noscript');
             elementsToRemove.forEach(el => el.remove());
+            const allElements = clone.querySelectorAll('*');
+            allElements.forEach(el => {
+                if (el.hasAttribute('href')) el.setAttribute('href', '#');
+                if (el.hasAttribute('src') && !el.getAttribute('src').startsWith('data:')) el.setAttribute('src', 'placeholder.png');
+            });
             return clone.innerHTML;
         }''')
 
@@ -136,6 +159,16 @@ async def _crawl_single_browser(
         _CROP_PADDING = 30
         valid_report: list[dict[str, Any]] = []
 
+        # Expand page viewport to cover full document dimensions so clip regions at any scroll depth remain inside viewport bounds
+        try:
+            doc_dim = await page.evaluate("""() => ({
+                w: Math.max(document.documentElement.scrollWidth, document.body ? document.body.scrollWidth : 0, 1280),
+                h: Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0, 720)
+            })""")
+            await page.set_viewport_size({"width": int(doc_dim.get("w", 1280)), "height": int(doc_dim.get("h", 720))})
+        except Exception as vp_exc:
+            logger.debug("Failed to expand viewport size before crop capture: %s", vp_exc)
+
         for idx, bug in enumerate(ai_report):
             selector = (bug.get("element_selector") or "").strip()
             if not selector:
@@ -148,12 +181,11 @@ async def _crawl_single_browser(
                 if repaired:
                     bbox_data = await _get_element_bbox(page, repaired)
 
-            # Filter out hallucinated selectors that do not exist in the actual DOM
-            if not bbox_data or not bbox_data.get("exists"):
-                logger.warning("Filtering out hallucinated bug with selector %r (not found in DOM)", selector)
-                continue
-
             valid_report.append(bug)
+
+            if not bbox_data or not bbox_data.get("exists"):
+                logger.debug("Bounding box not found for selector %r — keeping bug report without screenshot crop", selector)
+                continue
 
             page_w = float(bbox_data.get("pageWidth", 1280))
             page_h = float(bbox_data.get("pageHeight", 720))
@@ -234,19 +266,22 @@ async def stream_headless_crawler(
             else [target_browser.lower()]
         )
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        background_tasks: set[asyncio.Task] = set()
 
         async def crawl_and_enqueue(browser_type: str) -> None:
             result = await _crawl_single_browser(p, start_url, browser_type, ai_model, api_key)
             await queue.put(result)
 
-        tasks = [asyncio.create_task(crawl_and_enqueue(b)) for b in browsers]
+        for b in browsers:
+            t = asyncio.create_task(crawl_and_enqueue(b))
+            background_tasks.add(t)
+            t.add_done_callback(background_tasks.discard)
 
         initial: dict[str, dict[str, Any]] = {}
         for _ in browsers:
             result = await queue.get()
             initial[result["browser"]] = result
             yield result
-        await asyncio.gather(*tasks, return_exceptions=True)
 
         # If running multiple browsers and at least one found bugs but another found none,
         # retry the zero-bug browsers once — model inconsistency can cause false "no bugs".
@@ -264,7 +299,10 @@ async def stream_headless_crawler(
                 for b in to_retry:
                     yield {"status": "retrying", "browser": b}
 
-                retry_tasks = [asyncio.create_task(crawl_and_enqueue(b)) for b in to_retry]
+                for b in to_retry:
+                    rt = asyncio.create_task(crawl_and_enqueue(b))
+                    background_tasks.add(rt)
+                    rt.add_done_callback(background_tasks.discard)
+
                 for _ in to_retry:
                     yield await queue.get()
-                await asyncio.gather(*retry_tasks, return_exceptions=True)
