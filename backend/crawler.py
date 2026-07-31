@@ -24,6 +24,19 @@ def get_browser_engine(p: Playwright, browser_type: str) -> BrowserType:
 
 LOGIN_TIMEOUT_SECONDS = int(os.environ.get("LOGIN_TIMEOUT_SECONDS", "300"))  # 5-minute default; enough for manual login flows
 
+_INVALID_SELECTOR_SUFFIX = re.compile(
+    r":(?:contains|visible|hidden|has-text|icontains|selected|checked)\([^)]*\).*$"
+)
+
+
+def _repair_selector(selector: str) -> str | None:
+    """Strip a trailing jQuery-only pseudo-selector the model may have hallucinated,
+    returning a plain-CSS prefix, or None if there was nothing to strip."""
+    repaired = _INVALID_SELECTOR_SUFFIX.sub("", selector).strip()
+    if not repaired or repaired == selector:
+        return None
+    return repaired
+
 
 async def launch_interactive_login(url: str, browser_type: str = "chromium") -> dict[str, str]:
     """Open a headed browser for manual login and save the auth state to disk."""
@@ -91,18 +104,35 @@ async def _crawl_single_browser(
             selector = (bug.get("element_selector") or "").strip()
             if not selector:
                 continue
+
             try:
                 bbox = await page.locator(selector).first.bounding_box()
-                if bbox:
-                    x = max(0, bbox["x"] - _CROP_PADDING)
-                    y = max(0, bbox["y"] - _CROP_PADDING)
-                    w = bbox["width"] + 2 * _CROP_PADDING
-                    h = bbox["height"] + 2 * _CROP_PADDING
-                    crop_path = f"static/screenshots/crop_{safe_browser}_{timestamp}_{idx}.png"
+            except Exception as e:
+                bbox = None
+                logger.warning("Crop failed for selector %r: %s", selector, e)
+
+            if not bbox:
+                repaired = _repair_selector(selector)
+                if repaired:
+                    try:
+                        bbox = await page.locator(repaired).first.bounding_box()
+                    except Exception as e:
+                        bbox = None
+                        logger.warning("Crop retry failed for repaired selector %r (from %r): %s", repaired, selector, e)
+
+            if bbox:
+                x = max(0, bbox["x"] - _CROP_PADDING)
+                y = max(0, bbox["y"] - _CROP_PADDING)
+                w = bbox["width"] + 2 * _CROP_PADDING
+                h = bbox["height"] + 2 * _CROP_PADDING
+                crop_path = f"static/screenshots/crop_{safe_browser}_{timestamp}_{idx}.png"
+                try:
                     await page.screenshot(path=crop_path, clip={"x": x, "y": y, "width": w, "height": h})
                     bug["screenshot_crop"] = crop_path
-            except Exception:
-                logger.debug("Could not capture crop for selector %r", selector, exc_info=True)
+                except Exception as e:
+                    logger.warning("Crop screenshot capture failed for selector %r: %s", selector, e)
+            else:
+                logger.warning("No bounding box found for selector %r (crop skipped)", selector)
 
         await context.close()
         await browser.close()
