@@ -59,6 +59,40 @@ async def launch_interactive_login(url: str, browser_type: str = "chromium") -> 
         return {"status": "success", "message": "Authentication saved successfully."}
 
 
+async def _get_element_bbox(page: Any, selector: str) -> dict[str, Any] | None:
+    """Instantly lookup an element's bounding rectangle via JS DOM evaluation,
+    returning None immediately if the selector is invalid.
+    Returns DOM existence, element coordinates, and page dimensions for crop clamping."""
+    try:
+        return await page.evaluate(
+            """(sel) => {
+                try {
+                    const el = document.querySelector(sel);
+                    const pageWidth = Math.max(document.documentElement.scrollWidth, document.body ? document.body.scrollWidth : 0, 1280);
+                    const pageHeight = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0, 720);
+                    if (!el) {
+                        return { exists: false, pageWidth, pageHeight };
+                    }
+                    const rect = el.getBoundingClientRect();
+                    return {
+                        exists: true,
+                        x: rect.left + window.scrollX,
+                        y: rect.top + window.scrollY,
+                        width: rect.width,
+                        height: rect.height,
+                        pageWidth,
+                        pageHeight
+                    };
+                } catch (e) {
+                    return null;
+                }
+            }""",
+            selector,
+        )
+    except Exception:
+        return None
+
+
 async def _crawl_single_browser(
     p: Playwright,
     start_url: str,
@@ -100,32 +134,42 @@ async def _crawl_single_browser(
                 ai_error = str(ai_exc)
 
         _CROP_PADDING = 30
-        _CROP_LOOKUP_TIMEOUT_MS = 3000  # page is already fully rendered; don't inherit Playwright's 30s auto-wait
+        valid_report: list[dict[str, Any]] = []
+
         for idx, bug in enumerate(ai_report):
             selector = (bug.get("element_selector") or "").strip()
             if not selector:
                 continue
 
-            try:
-                bbox = await page.locator(selector).first.bounding_box(timeout=_CROP_LOOKUP_TIMEOUT_MS)
-            except Exception as e:
-                bbox = None
-                logger.warning("Crop failed for selector %r: %s", selector, e)
+            bbox_data = await _get_element_bbox(page, selector)
 
-            if not bbox:
+            if not bbox_data or not bbox_data.get("exists"):
                 repaired = _repair_selector(selector)
                 if repaired:
-                    try:
-                        bbox = await page.locator(repaired).first.bounding_box(timeout=_CROP_LOOKUP_TIMEOUT_MS)
-                    except Exception as e:
-                        bbox = None
-                        logger.warning("Crop retry failed for repaired selector %r (from %r): %s", repaired, selector, e)
+                    bbox_data = await _get_element_bbox(page, repaired)
 
-            if bbox:
-                x = max(0, bbox["x"] - _CROP_PADDING)
-                y = max(0, bbox["y"] - _CROP_PADDING)
-                w = bbox["width"] + 2 * _CROP_PADDING
-                h = bbox["height"] + 2 * _CROP_PADDING
+            # Filter out hallucinated selectors that do not exist in the actual DOM
+            if not bbox_data or not bbox_data.get("exists"):
+                logger.warning("Filtering out hallucinated bug with selector %r (not found in DOM)", selector)
+                continue
+
+            valid_report.append(bug)
+
+            page_w = float(bbox_data.get("pageWidth", 1280))
+            page_h = float(bbox_data.get("pageHeight", 720))
+            rect_w = float(bbox_data.get("width", 0))
+            rect_h = float(bbox_data.get("height", 0))
+
+            if rect_w > 0 and rect_h > 0:
+                raw_x = float(bbox_data.get("x", 0))
+                raw_y = float(bbox_data.get("y", 0))
+
+                # Clamp clip box coordinates strictly within page document boundaries
+                x = max(0.0, min(raw_x - _CROP_PADDING, page_w - 10))
+                y = max(0.0, min(raw_y - _CROP_PADDING, page_h - 10))
+                w = max(10.0, min(rect_w + 2 * _CROP_PADDING, page_w - x))
+                h = max(10.0, min(rect_h + 2 * _CROP_PADDING, page_h - y))
+
                 crop_path = f"static/screenshots/crop_{safe_browser}_{timestamp}_{idx}.png"
                 try:
                     await page.screenshot(path=crop_path, clip={"x": x, "y": y, "width": w, "height": h})
@@ -133,11 +177,9 @@ async def _crawl_single_browser(
                 except Exception as e:
                     logger.warning("Crop screenshot capture failed for selector %r: %s", selector, e)
             elif bug.get("category") == "hidden":
-                # A missing bounding box is the expected outcome for a genuinely hidden
-                # element (display:none, detached, etc.) — not a capture failure.
                 logger.debug("No bounding box for selector %r — expected for a 'hidden' bug", selector)
-            else:
-                logger.warning("No bounding box found for selector %r (crop skipped)", selector)
+
+        ai_report = valid_report
 
         await context.close()
         await browser.close()

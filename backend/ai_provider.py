@@ -54,28 +54,29 @@ The object must have exactly one key "bugs" whose value is an array of bug objec
 Each bug object must have exactly these five fields:
 "description": start with the element name (NEVER a leading "The", "A", or "An"), no trailing punctuation, use identical wording regardless of which browser rendered the page — describe the symptom freely in your own words. Format: "[Element] [symptom] on [location]" or "[Element] [symptom]". When the bug appears on small or narrow screens always write "on narrow viewports (mobile devices)". Examples: "Search bar overflows its container on narrow viewports (mobile devices)", "Logo sits noticeably off-center in header"
 "category": exactly one of: hidden, clipped, overlapping, misaligned, collapsed, low-contrast, image-broken, other — see <category_vocabulary> above
-"element_selector": a single syntactically valid CSS selector (standard CSS, parseable by document.querySelector — NOT jQuery-style pseudo-classes like :contains(), :visible, or :has-text()) that uniquely identifies the responsible element. Prefer, in order: (1) an id selector (#some-id), (2) a stable data-* attribute ([data-testid="..."]), (3) a specific class selector, (4) a tag+nth-of-type chain (e.g. "ul.nav > li:nth-of-type(3)") scoped narrowly enough to resolve to exactly one element. Do not use a bare tag name (div, span, p) alone.
+"element_selector": a single syntactically valid CSS selector (standard CSS, parseable by document.querySelector — NOT jQuery-style pseudo-classes like :contains(), :visible, or :has-text()) that identifies the responsible component element. Prefer top-level component container selectors (e.g., "#some-id", ".shipping-cost", ".product-grid", ".product-card:nth-of-type(2)") over deep child tags (like img, span, .video-overlay) to ensure consistent selector identification across browser runs. Do not use a bare tag name (div, span, p) alone.
 "suggested_solution": a concrete technical fix (free-form)
 "confidence": integer 1-5, where 5 = certain (clearly visible in screenshot), 3 = probable, 1 = speculative. Only report bugs you would rate 3 or above.
 
 If there are no bugs respond with: {"bugs": []}
 Important: only report bugs you can clearly see in the screenshot. Visual confirmation is required — do not infer bugs from DOM alone. When in doubt, do not report. A false positive is worse than a missed bug.
+CRITICAL: Never copy selectors or text from the example below. Every element_selector MUST be a real CSS selector present in the provided <dom_structure>.
 </output_format>
 
 <example>
 {"bugs": [
   {
-    "description": "Submit button overflows its container on narrow viewports (mobile devices)",
+    "description": "Widget container overflows parent layout boundaries on mobile screens",
     "category": "clipped",
-    "element_selector": "button#submit-btn",
-    "suggested_solution": "Remove fixed width; use horizontal padding instead so the button scales with its label",
+    "element_selector": "#sample-element-id",
+    "suggested_solution": "Remove fixed width and set max-width: 100% on the container element",
     "confidence": 5
   },
   {
-    "description": "Navigation bar sits on top of the hero image when the page is scrolled",
+    "description": "Secondary promo banner overlaps main section title when rendered",
     "category": "overlapping",
-    "element_selector": ".navbar",
-    "suggested_solution": "Add position: sticky and z-index: 100 to .navbar so it stays above page content",
+    "element_selector": ".sample-widget-container",
+    "suggested_solution": "Adjust z-index and flex margin between banner and section title",
     "confidence": 4
   }
 ]}

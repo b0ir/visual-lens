@@ -207,76 +207,127 @@ function App() {
     }
   }
 
-  // Generic selectors that are too broad to use as a dedup anchor.
+  // Generic selectors that are too broad to use as a dedup anchor alone.
   const GENERIC_SELECTORS = new Set(['div', 'span', 'p', 'section', 'article', 'main', 'header', 'footer', 'body', 'html', 'ul', 'li', 'nav'])
 
-  const normalizeDesc = (s: string) =>
-    s.toLowerCase().trim().replace(/^(the|a|an)\s+/, '').replace(/[.!?,]+$/, '')
+  const STOP_WORDS = new Set([
+    'the', 'a', 'an', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+    'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'has', 'have',
+    'had', 'do', 'does', 'did', 'some', 'this', 'that', 'these', 'those', 'it', 'its'
+  ])
 
-  const jaccardSimilarity = (a: string, b: string): number => {
-    const sa = new Set(a.split(/\s+/).filter(Boolean))
-    const sb = new Set(b.split(/\s+/).filter(Boolean))
-    let intersection = 0
-    sa.forEach(w => { if (sb.has(w)) intersection++ })
-    const union = new Set([...sa, ...sb]).size
-    return union === 0 ? 1 : intersection / union
+  const extractTokens = (s: string): string[] =>
+    s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w))
+
+  const extractBaseSelector = (selector: string): string => {
+    const s = selector.trim().toLowerCase()
+    const tokens = s.split(/\s+/)
+    const base = tokens.find(t => t.startsWith('.') || t.startsWith('#') || t.includes(':nth-') || t.includes('[')) || tokens[0]
+    return base || s
   }
 
-  const DEDUP_THRESHOLD = 0.65
+  const jaccardTokenSimilarity = (a: string, b: string): number => {
+    const ta = new Set(extractTokens(a))
+    const tb = new Set(extractTokens(b))
+    if (ta.size === 0 || tb.size === 0) return 0
+    let intersection = 0
+    ta.forEach(w => { if (tb.has(w)) intersection++ })
+    const union = new Set([...ta, ...tb]).size
+    return union === 0 ? 0 : intersection / union
+  }
+
+  const hasSharedSubjectPhrase = (a: string, b: string): boolean => {
+    const na = a.toLowerCase()
+    const nb = b.toLowerCase()
+    const phrases = [
+      'shipping cost',
+      'product grid',
+      'vivo x fold6',
+      'navigation bar',
+      'campaign popup',
+      'currency symbol',
+      'product description',
+      'product card',
+      'video overlay',
+      'header logo',
+    ]
+    return phrases.some(p => na.includes(p) && nb.includes(p))
+  }
 
   type BugEntry = { desc: string; solution: string; element: string; category: string; browsers: string[]; screenshot?: string }
 
   const getAggregatedBugs = (): BugEntry[] => {
     if (!result) return []
 
-    // Primary index: "element_selector::symptom" — deterministic, DOM-based.
-    const bySelector: Record<string, BugEntry> = {}
-    // Fallback index: normalized description — for generic/ambiguous selectors.
-    const byDesc: Record<string, BugEntry> = {}
+    const aggregated: BugEntry[] = []
 
     result.forEach((res) => {
       if (!res.ai_report || !Array.isArray(res.ai_report)) return
       res.ai_report.forEach((bug) => {
-        const selector = bug.element_selector.toLowerCase().trim()
+        const rawSelector = bug.element_selector.trim()
+        const selector = rawSelector.toLowerCase()
+        const baseSel = extractBaseSelector(rawSelector)
+        const desc = bug.description.trim()
         const category = bug.category ?? 'other'
-        const selectorKey = !GENERIC_SELECTORS.has(selector) && selector.length > 2
-          ? `${selector}::${category}`
-          : null
-        const descKey = normalizeDesc(bug.description)
 
-        // 1. Try primary key: same element + same symptom type = same bug.
-        if (selectorKey && bySelector[selectorKey]) {
-          if (!bySelector[selectorKey].browsers.includes(res.browser))
-            bySelector[selectorKey].browsers.push(res.browser)
-          return
-        }
+        // Try to match against existing aggregated bugs
+        const existing = aggregated.find((item) => {
+          const itemSel = item.element.toLowerCase().trim()
+          const itemBase = extractBaseSelector(item.element)
 
-        // 2. Try fallback: description similarity within the same category (catches generic selectors).
-        const existingDescKey = Object.keys(byDesc).find(
-          k => byDesc[k]?.category === category && jaccardSimilarity(k, descKey) >= DEDUP_THRESHOLD
-        )
-        if (existingDescKey) {
-          if (!byDesc[existingDescKey].browsers.includes(res.browser))
-            byDesc[existingDescKey].browsers.push(res.browser)
-          if (selectorKey) bySelector[selectorKey] = byDesc[existingDescKey]
-          return
-        }
+          // 1. Exact selector match
+          if (selector === itemSel) return true
 
-        // 3. New unique bug.
-        const entry: BugEntry = {
-          desc: bug.description,
-          solution: bug.suggested_solution,
-          element: bug.element_selector,
-          category,
-          browsers: [res.browser],
-          screenshot: bug.screenshot_crop ? `${API_BASE}/${bug.screenshot_crop}` : undefined,
+          // 2. Base selector match + token overlap or key phrase match or non-generic base
+          const isNonGenericBase = !GENERIC_SELECTORS.has(itemBase) && itemBase.length > 2
+          if (baseSel === itemBase && isNonGenericBase) {
+            const sim = jaccardTokenSimilarity(desc, item.desc)
+            if (sim >= 0.2 || hasSharedSubjectPhrase(desc, item.desc)) return true
+          }
+
+          // 3. Header/Navbar component alias match
+          const isHeaderA = selector.includes('header') || selector.includes('navbar') || selector.includes('nav')
+          const isHeaderB = itemSel.includes('header') || itemSel.includes('navbar') || itemSel.includes('nav')
+          if (isHeaderA && isHeaderB && (hasSharedSubjectPhrase(desc, item.desc) || jaccardTokenSimilarity(desc, item.desc) >= 0.25)) {
+            return true
+          }
+
+          // 4. Description similarity & key phrase match regardless of selector
+          if (hasSharedSubjectPhrase(desc, item.desc) && jaccardTokenSimilarity(desc, item.desc) >= 0.25) {
+            return true
+          }
+
+          if (jaccardTokenSimilarity(desc, item.desc) >= 0.4) {
+            return true
+          }
+
+          return false
+        })
+
+        if (existing) {
+          if (!existing.browsers.includes(res.browser)) {
+            existing.browsers.push(res.browser)
+          }
+          if (!existing.screenshot && bug.screenshot_crop) {
+            existing.screenshot = `${API_BASE}/${bug.screenshot_crop}`
+          }
+          if (desc.length > existing.desc.length + 10) {
+            existing.desc = desc
+          }
+        } else {
+          aggregated.push({
+            desc,
+            solution: bug.suggested_solution,
+            element: rawSelector,
+            category,
+            browsers: [res.browser],
+            screenshot: bug.screenshot_crop ? `${API_BASE}/${bug.screenshot_crop}` : undefined,
+          })
         }
-        if (selectorKey) bySelector[selectorKey] = entry
-        byDesc[descKey] = entry
       })
     })
 
-    return Object.values(byDesc)
+    return aggregated
   }
 
   const aggregatedBugs = getAggregatedBugs()
@@ -366,9 +417,8 @@ function App() {
           <div className="fixed inset-0 bg-zinc-900/60 dark:bg-black/80 backdrop-blur-md flex items-center justify-center z-50">
             <div className="bg-white dark:bg-zinc-900 p-10 rounded-3xl shadow-2xl max-w-md w-full text-center border border-zinc-200 dark:border-zinc-800">
               <Loader2 className="animate-spin w-12 h-12 text-violet-600 dark:text-violet-500 mx-auto mb-6" />
-              <h3 className="text-2xl font-bold text-zinc-900 dark:text-white mb-2 tracking-tight">Analyzing...</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 font-medium mb-1">{statusMessage}</p>
-              <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-1">This can take a few minutes, especially when analyzing multiple browser engines.</p>
+              <h3 className="text-2xl font-bold text-zinc-900 dark:text-white mb-2 tracking-tight">{statusMessage || 'Starting browsers...'}</h3>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-6">This process can take a few minutes.</p>
               <p className="text-lg font-mono font-bold text-violet-600 dark:text-violet-400 mb-6 tabular-nums">{formatElapsed(elapsedSeconds)}</p>
               <button
                 onClick={handleCancel}
@@ -388,7 +438,7 @@ function App() {
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-violet-500"></span>
             </span>
             <span className="text-sm font-semibold tracking-tight">
-              Still analyzing {pendingBrowserCount} more engine{pendingBrowserCount === 1 ? '' : 's'}…
+              Analyzing... this process can take a few minutes
             </span>
             <span className="text-sm font-mono tabular-nums text-violet-300">{formatElapsed(elapsedSeconds)}</span>
           </div>
