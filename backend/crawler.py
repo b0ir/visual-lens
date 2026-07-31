@@ -100,13 +100,14 @@ async def _crawl_single_browser(
                 ai_error = str(ai_exc)
 
         _CROP_PADDING = 30
+        _CROP_LOOKUP_TIMEOUT_MS = 3000  # page is already fully rendered; don't inherit Playwright's 30s auto-wait
         for idx, bug in enumerate(ai_report):
             selector = (bug.get("element_selector") or "").strip()
             if not selector:
                 continue
 
             try:
-                bbox = await page.locator(selector).first.bounding_box()
+                bbox = await page.locator(selector).first.bounding_box(timeout=_CROP_LOOKUP_TIMEOUT_MS)
             except Exception as e:
                 bbox = None
                 logger.warning("Crop failed for selector %r: %s", selector, e)
@@ -115,7 +116,7 @@ async def _crawl_single_browser(
                 repaired = _repair_selector(selector)
                 if repaired:
                     try:
-                        bbox = await page.locator(repaired).first.bounding_box()
+                        bbox = await page.locator(repaired).first.bounding_box(timeout=_CROP_LOOKUP_TIMEOUT_MS)
                     except Exception as e:
                         bbox = None
                         logger.warning("Crop retry failed for repaired selector %r (from %r): %s", repaired, selector, e)
@@ -131,6 +132,10 @@ async def _crawl_single_browser(
                     bug["screenshot_crop"] = crop_path
                 except Exception as e:
                     logger.warning("Crop screenshot capture failed for selector %r: %s", selector, e)
+            elif bug.get("category") == "hidden":
+                # A missing bounding box is the expected outcome for a genuinely hidden
+                # element (display:none, detached, etc.) — not a capture failure.
+                logger.debug("No bounding box for selector %r — expected for a 'hidden' bug", selector)
             else:
                 logger.warning("No bounding box found for selector %r (crop skipped)", selector)
 
