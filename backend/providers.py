@@ -310,24 +310,30 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                         if any(kw in m.get("id", "").lower() for kw in keywords)
                     ]
 
+                    sem = asyncio.Semaphore(5)
+
                     async def _is_usable(model_dict: dict) -> bool:
-                        model_id = model_dict.get("id", "")
-                        try:
-                            probe = await client.post(
-                                "https://integrate.api.nvidia.com/v1/chat/completions",
-                                headers={"Authorization": f"Bearer {api_key}"},
-                                json={
-                                    "model": model_id,
-                                    "messages": [{"role": "user", "content": "hi"}],
-                                    "max_tokens": 1,
-                                },
-                                timeout=5.0,
-                            )
-                            if probe.status_code == 404:
-                                return False
-                            return True
-                        except Exception:
-                            return True
+                        async with sem:
+                            model_id = model_dict.get("id", "")
+                            try:
+                                probe = await client.post(
+                                    "https://integrate.api.nvidia.com/v1/chat/completions",
+                                    headers={"Authorization": f"Bearer {api_key}"},
+                                    json={
+                                        "model": model_id,
+                                        "messages": [{"role": "user", "content": "hi"}],
+                                        "max_tokens": 1,
+                                    },
+                                    timeout=5.0,
+                                )
+                                # 404 indicates the model endpoint or function is retired/not found for account.
+                                if probe.status_code == 404:
+                                    return False
+                                # Fail open for transient errors (429 rate-limited, 5xx, timeouts)
+                                # to prevent network glitches from falsely excluding valid models.
+                                return True
+                            except Exception:
+                                return True
 
                     results = await asyncio.gather(*[_is_usable(m) for m in candidates])
                     usable_models = [m for m, ok in zip(candidates, results) if ok]
