@@ -30,13 +30,22 @@ UNNAMED_FREE_VISION_MODEL = {
 }
 
 
-def _patch_client(monkeypatch, auth_response, models_response=None):
+CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def _patch_client(monkeypatch, auth_response, models_response=None, probe_responses=None):
+    probe_responses = probe_responses or {}
+
     def handler(request: httpx.Request) -> httpx.Response:
-        if str(request.url) == AUTH_KEY_URL:
+        url_str = str(request.url)
+        if url_str == AUTH_KEY_URL:
             return auth_response
-        if str(request.url) == MODELS_URL:
+        if url_str == MODELS_URL:
             assert models_response is not None, "models endpoint should not be reached"
             return models_response
+        if url_str == CHAT_URL:
+            payload = httpx.Response(200, json={"choices": []})
+            return payload
         raise AssertionError(f"unexpected request to {request.url}")
 
     transport = httpx.MockTransport(handler)

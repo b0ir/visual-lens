@@ -170,6 +170,7 @@ async def _crawl_single_browser(
             logger.debug("Failed to expand viewport size before crop capture: %s", vp_exc)
 
         for idx, bug in enumerate(ai_report):
+            valid_report.append(bug)
             selector = (bug.get("element_selector") or "").strip()
             if not selector:
                 continue
@@ -180,8 +181,6 @@ async def _crawl_single_browser(
                 repaired = _repair_selector(selector)
                 if repaired:
                     bbox_data = await _get_element_bbox(page, repaired)
-
-            valid_report.append(bug)
 
             if not bbox_data or not bbox_data.get("exists"):
                 logger.debug("Bounding box not found for selector %r — keeping bug report without screenshot crop", selector)

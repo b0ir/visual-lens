@@ -39,3 +39,20 @@ def test_empty_content_returns_empty_list():
 
 def test_non_json_returns_none():
     assert _extract_bugs("No bugs were found on this page.") is None
+
+
+def test_reasoning_model_prose_before_and_after_json():
+    content = """The user wants me to identify visual bugs in the provided screenshot and DOM.
+
+1. Analyze the Screenshot:
+- Top Banner: There's a dark grey banner at the top.
+
+```json
+{"bugs": [{"description": "Search input has no label", "category": "misaligned", "element_selector": "#search"}]}
+```
+
+Hope this summary helps!"""
+    assert _extract_bugs(content) == [
+        {"description": "Search input has no label", "category": "misaligned", "element_selector": "#search"}
+    ]
+

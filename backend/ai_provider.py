@@ -97,20 +97,13 @@ def _normalize_category(category: Any) -> str:
 
 def _extract_bugs(content: str) -> list[dict[str, Any]] | None:
     """
-    Try to parse bugs from a string that should contain JSON.
+    Try to parse bugs from a string that contains JSON or markdown code blocks.
     Returns a list on success, None if the content cannot be parsed.
     """
-    # Strip markdown fences
-    if content.startswith("```json"):
-        content = content[7:]
-    elif content.startswith("```"):
-        content = content[3:]
-    if content.endswith("```"):
-        content = content[:-3]
-    content = content.strip()
-
-    if not content:
+    if not content or not content.strip():
         return []
+
+    content = content.strip()
 
     def _from_parsed(parsed: Any) -> list[dict[str, Any]] | None:
         if isinstance(parsed, list):
@@ -127,22 +120,35 @@ def _extract_bugs(content: str) -> list[dict[str, Any]] | None:
                     return val
         return None
 
-    # Try parsing the whole content
+    # 1. Try direct json.loads
     try:
-        return _from_parsed(json.loads(content))
+        res = _from_parsed(json.loads(content))
+        if res is not None:
+            return res
     except json.JSONDecodeError:
         pass
 
-    # Try to find a JSON object or array anywhere in the response
-    for start_char in ('{', '['):
-        idx = content.find(start_char)
-        if idx != -1:
+    # 2. Try markdown fenced blocks anywhere in content (e.g. ```json ... ```)
+    code_blocks = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", content)
+    for block in code_blocks:
+        try:
+            res = _from_parsed(json.loads(block.strip()))
+            if res is not None:
+                return res
+        except json.JSONDecodeError:
+            pass
+
+    # 3. Use raw_decode at any '{' or '[' to handle reasoning models with trailing text
+    decoder = json.JSONDecoder()
+    for idx, char in enumerate(content):
+        if char in ('{', '['):
             try:
-                result = _from_parsed(json.loads(content[idx:]))
-                if result is not None:
-                    return result
+                parsed_obj, _ = decoder.raw_decode(content, idx)
+                res = _from_parsed(parsed_obj)
+                if res is not None:
+                    return res
             except json.JSONDecodeError:
-                pass
+                continue
 
     return None
 

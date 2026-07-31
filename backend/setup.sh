@@ -36,7 +36,9 @@ fi
 
 uv sync
 
-if ! uv run python -c "import os, sys; from playwright.sync_api import sync_playwright; with sync_playwright() as p: sys.exit(0 if all(os.path.exists(b.executable_path) for b in [p.chromium, p.firefox, p.webkit]) else 1)" >/dev/null 2>&1; then
+if ! uv run python -c "from playwright.sync_api import sync_playwright; import os, sys
+with sync_playwright() as p:
+    sys.exit(0 if all(os.path.exists(b.executable_path) for b in [p.chromium, p.firefox, p.webkit]) else 1)" >/dev/null 2>&1; then
   echo "Installing Playwright browsers (chromium, firefox, webkit)..."
   echo "This can take a few minutes on a first run, and may print nothing for a while."
 
