@@ -36,17 +36,20 @@ fi
 
 uv sync
 
-echo "Installing Playwright browsers (chromium, firefox, webkit)..."
-echo "This can take a few minutes on a first run, and may print nothing for a while — this script will confirm every 15s that it is still working."
+if ! uv run python -c "import os, sys; from playwright.sync_api import sync_playwright; p = sync_playwright().start(); sys.exit(0 if all(os.path.exists(b.executable_path) for b in [p.chromium, p.firefox, p.webkit]) else 1)" >/dev/null 2>&1; then
+  echo "Installing Playwright browsers (chromium, firefox, webkit)..."
+  echo "This can take a few minutes on a first run, and may print nothing for a while."
 
-uv run playwright install chromium firefox webkit &
-playwright_pid=$!
+  uv run playwright install chromium firefox webkit &
+  playwright_pid=$!
 
-elapsed=0
-while kill -0 "$playwright_pid" 2>/dev/null; do
-  sleep 15
-  elapsed=$((elapsed + 15))
-  echo "Still installing Playwright browsers... (${elapsed}s elapsed)"
-done
+  elapsed=0
+  while kill -0 "$playwright_pid" 2>/dev/null; do
+    sleep 15
+    elapsed=$((elapsed + 15))
+    echo "Still installing Playwright browsers... (${elapsed}s elapsed)"
+  done
 
-wait "$playwright_pid"
+  wait "$playwright_pid"
+  echo "Playwright browsers installed successfully."
+fi
