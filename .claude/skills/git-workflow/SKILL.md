@@ -124,7 +124,6 @@ gh pr create \
 - [ ] <specific thing to verify>
 - [ ] <specific thing to verify>
 
-🤖 Generated with [Claude Code](https://claude.ai/claude-code)
 EOF
 )"
 ```
