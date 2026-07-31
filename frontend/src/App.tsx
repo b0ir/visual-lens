@@ -224,7 +224,7 @@ function App() {
 
   const DEDUP_THRESHOLD = 0.65
 
-  type BugEntry = { desc: string; solution: string; element: string; browsers: string[]; screenshot?: string }
+  type BugEntry = { desc: string; solution: string; element: string; category: string; browsers: string[]; screenshot?: string }
 
   const getAggregatedBugs = (): BugEntry[] => {
     if (!result) return []
@@ -251,8 +251,10 @@ function App() {
           return
         }
 
-        // 2. Try fallback: description similarity (catches generic selectors).
-        const existingDescKey = Object.keys(byDesc).find(k => jaccardSimilarity(k, descKey) >= DEDUP_THRESHOLD)
+        // 2. Try fallback: description similarity within the same category (catches generic selectors).
+        const existingDescKey = Object.keys(byDesc).find(
+          k => byDesc[k]?.category === category && jaccardSimilarity(k, descKey) >= DEDUP_THRESHOLD
+        )
         if (existingDescKey) {
           if (!byDesc[existingDescKey].browsers.includes(res.browser))
             byDesc[existingDescKey].browsers.push(res.browser)
@@ -265,6 +267,7 @@ function App() {
           desc: bug.description,
           solution: bug.suggested_solution,
           element: bug.element_selector,
+          category,
           browsers: [res.browser],
           screenshot: bug.screenshot_crop ? `${API_BASE}/${bug.screenshot_crop}` : undefined,
         }
