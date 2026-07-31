@@ -29,13 +29,13 @@ Visual bugs include: overlapping or clipped text, broken layout, misaligned elem
 <process>
 1. Examine the screenshot for clearly visible anomalies. If you cannot see the problem in the screenshot, do not report it — DOM analysis alone is not sufficient.
 2. Cross-reference each confirmed visual anomaly with the DOM to identify the responsible element.
-3. For each bug found, pick the single best symptom keyword from the vocabulary below, then record the description, selector, and fix.
+3. For each bug found, write a free-form description of the symptom, classify it into the category list below, and record the description, category, selector, and fix.
 Note: minor typographic and sub-pixel rendering differences between browsers (e.g., font hinting, 1-2px position variance) are NOT bugs. Only report cross-browser differences that visibly impact layout or usability.
 </process>
 
-<symptom_vocabulary>
-Use EXACTLY one of these seven keywords as the symptom in every description. No synonyms, no free-form phrasing.
-Keywords: hidden, clipped, overlapping, misaligned, collapsed, low-contrast, image-broken
+<category_vocabulary>
+Classify every bug into exactly one of these eight categories (use "other" only when none of the first seven genuinely fit):
+hidden, clipped, overlapping, misaligned, collapsed, low-contrast, image-broken, other
 
 hidden: element is not visible to a user in the screenshot (off-screen, display none, opacity 0, or fully occluded by another element)
 clipped: element or its text is partially cut off, overflowing, or truncated — visible in the screenshot
@@ -44,15 +44,17 @@ misaligned: element has clearly visible and significant wrong position, spacing,
 collapsed: element layout visibly broke (zero or near-zero height or width, wrapping failure) — must be visible in the screenshot
 low-contrast: text or UI element has quantifiably poor contrast — the text is genuinely hard to read against its background in the screenshot
 image-broken: the browser's broken-image icon or gray placeholder must be visibly present in the screenshot — do NOT report based on DOM inference alone
-</symptom_vocabulary>
+other: a clearly visible visual bug that does not fit any category above
+</category_vocabulary>
 
 <output_format>
 You MUST respond with a single valid JSON object. No prose, no markdown, no code fences, no explanations before or after. Just the JSON object.
 
 The object must have exactly one key "bugs" whose value is an array of bug objects.
-Each bug object must have exactly these four fields:
-"description": start with the element name (NEVER a leading "The", "A", or "An"), include exactly one symptom keyword from the vocabulary, no trailing punctuation, use identical wording regardless of which browser rendered the page. Format: "[Element] [symptom-keyword] on [location]" or "[Element] [symptom-keyword]". When the bug appears on small or narrow screens always write "on narrow viewports (mobile devices)". Examples: "Search bar clipped on narrow viewports (mobile devices)", "Logo misaligned in header"
-"element_selector": the HTML tag, id, or class responsible (infer from the DOM)
+Each bug object must have exactly these five fields:
+"description": start with the element name (NEVER a leading "The", "A", or "An"), no trailing punctuation, use identical wording regardless of which browser rendered the page — describe the symptom freely in your own words. Format: "[Element] [symptom] on [location]" or "[Element] [symptom]". When the bug appears on small or narrow screens always write "on narrow viewports (mobile devices)". Examples: "Search bar overflows its container on narrow viewports (mobile devices)", "Logo sits noticeably off-center in header"
+"category": exactly one of: hidden, clipped, overlapping, misaligned, collapsed, low-contrast, image-broken, other — see <category_vocabulary> above
+"element_selector": a single syntactically valid CSS selector (standard CSS, parseable by document.querySelector — NOT jQuery-style pseudo-classes like :contains(), :visible, or :has-text()) that uniquely identifies the responsible element. Prefer, in order: (1) an id selector (#some-id), (2) a stable data-* attribute ([data-testid="..."]), (3) a specific class selector, (4) a tag+nth-of-type chain (e.g. "ul.nav > li:nth-of-type(3)") scoped narrowly enough to resolve to exactly one element. Do not use a bare tag name (div, span, p) alone.
 "suggested_solution": a concrete technical fix (free-form)
 "confidence": integer 1-5, where 5 = certain (clearly visible in screenshot), 3 = probable, 1 = speculative. Only report bugs you would rate 3 or above.
 
@@ -63,13 +65,15 @@ Important: only report bugs you can clearly see in the screenshot. Visual confir
 <example>
 {"bugs": [
   {
-    "description": "Submit button clipped on narrow viewports (mobile devices)",
+    "description": "Submit button overflows its container on narrow viewports (mobile devices)",
+    "category": "clipped",
     "element_selector": "button#submit-btn",
     "suggested_solution": "Remove fixed width; use horizontal padding instead so the button scales with its label",
     "confidence": 5
   },
   {
-    "description": "Navigation bar overlapping hero image on scroll",
+    "description": "Navigation bar sits on top of the hero image when the page is scrolled",
+    "category": "overlapping",
     "element_selector": ".navbar",
     "suggested_solution": "Add position: sticky and z-index: 100 to .navbar so it stays above page content",
     "confidence": 4
@@ -77,6 +81,8 @@ Important: only report bugs you can clearly see in the screenshot. Visual confir
 ]}
 </example>
 """
+
+VALID_CATEGORIES = {"hidden", "clipped", "overlapping", "misaligned", "collapsed", "low-contrast", "image-broken", "other"}
 
 
 def _extract_bugs(content: str) -> list[dict[str, Any]] | None:
@@ -179,7 +185,8 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
         if bugs is None:
             logger.warning(f"Model returned non-JSON content: {content[:200]!r}")
             return []
-        # Drop low-confidence detections and strip the internal confidence field.
+        # Drop low-confidence detections, strip the internal confidence field,
+        # and normalize category to a known value (defaulting to "other").
         filtered = []
         for b in bugs:
             try:
@@ -188,6 +195,11 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
             except (TypeError, ValueError):
                 continue
             b.pop("confidence", None)
+            category = b.get("category")
+            if not isinstance(category, str) or category.strip().lower() not in VALID_CATEGORIES:
+                b["category"] = "other"
+            else:
+                b["category"] = category.strip().lower()
             filtered.append(b)
         return filtered
 

@@ -7,6 +7,7 @@ interface BugReport {
   description: string
   suggested_solution: string
   element_selector: string
+  category?: string
   screenshot_crop?: string
 }
 
@@ -206,35 +207,11 @@ function App() {
     }
   }
 
-  const SYMPTOM_KEYWORDS = ['hidden', 'clipped', 'overlapping', 'misaligned', 'collapsed', 'low-contrast', 'image-broken'] as const
-
-  // Map free-form symptom phrases to canonical keywords before any comparison.
-  const SYMPTOM_SYNONYMS: [RegExp, string][] = [
-    [/\bnot (fully |partially )?(visible|shown|displayed|rendered)\b/g, 'clipped'],
-    [/\b(partially |partly )?(cut off|truncated|overflow(?:ing)?|clips?)\b/g, 'clipped'],
-    [/\b(not visible|invisible|not shown|disappears?)\b/g, 'hidden'],
-    [/\b(overlaps?|covers?|obscures?|on top of)\b/g, 'overlapping'],
-    [/\b(misaligned|mis-aligned|out of (place|alignment)|off-?center|offset)\b/g, 'misaligned'],
-    [/\b(collapsed|broken layout|zero height|zero width)\b/g, 'collapsed'],
-    [/\b(low contrast|poor contrast|insufficient contrast)\b/g, 'low-contrast'],
-    [/\b(broken image|missing image|image (not |fails? to )load)\b/g, 'image-broken'],
-  ]
-
   // Generic selectors that are too broad to use as a dedup anchor.
   const GENERIC_SELECTORS = new Set(['div', 'span', 'p', 'section', 'article', 'main', 'header', 'footer', 'body', 'html', 'ul', 'li', 'nav'])
 
-  const normalizeDesc = (s: string) => {
-    let n = s.toLowerCase().trim().replace(/^(the|a|an)\s+/, '').replace(/[.!?,]+$/, '')
-    for (const [pattern, replacement] of SYMPTOM_SYNONYMS) {
-      n = n.replace(pattern, replacement)
-    }
-    return n
-  }
-
-  const extractSymptom = (desc: string): string => {
-    const lower = desc.toLowerCase()
-    return SYMPTOM_KEYWORDS.find(k => lower.includes(k)) ?? ''
-  }
+  const normalizeDesc = (s: string) =>
+    s.toLowerCase().trim().replace(/^(the|a|an)\s+/, '').replace(/[.!?,]+$/, '')
 
   const jaccardSimilarity = (a: string, b: string): number => {
     const sa = new Set(a.split(/\s+/).filter(Boolean))
@@ -261,9 +238,9 @@ function App() {
       if (!res.ai_report || !Array.isArray(res.ai_report)) return
       res.ai_report.forEach((bug) => {
         const selector = bug.element_selector.toLowerCase().trim()
-        const symptom = extractSymptom(bug.description)
-        const selectorKey = !GENERIC_SELECTORS.has(selector) && selector.length > 2 && symptom
-          ? `${selector}::${symptom}`
+        const category = bug.category ?? 'other'
+        const selectorKey = !GENERIC_SELECTORS.has(selector) && selector.length > 2
+          ? `${selector}::${category}`
           : null
         const descKey = normalizeDesc(bug.description)
 
