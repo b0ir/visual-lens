@@ -6,6 +6,7 @@ and key verification logic. This is the single source of truth
 for provider configuration.
 """
 
+import asyncio
 import httpx
 import logging
 import re
@@ -303,11 +304,38 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                 )
                 if resp.status_code == 200:
                     raw = resp.json().get("data", [])
+                    keywords = ("vision", "-vl", "vlm", "/neva", "/vila")
+                    candidates = [
+                        m for m in raw
+                        if any(kw in m.get("id", "").lower() for kw in keywords)
+                    ]
+
+                    async def _is_usable(model_dict: dict) -> bool:
+                        model_id = model_dict.get("id", "")
+                        try:
+                            probe = await client.post(
+                                "https://integrate.api.nvidia.com/v1/chat/completions",
+                                headers={"Authorization": f"Bearer {api_key}"},
+                                json={
+                                    "model": model_id,
+                                    "messages": [{"role": "user", "content": "hi"}],
+                                    "max_tokens": 1,
+                                },
+                                timeout=5.0,
+                            )
+                            if probe.status_code == 404:
+                                return False
+                            return True
+                        except Exception:
+                            return True
+
+                    results = await asyncio.gather(*[_is_usable(m) for m in candidates])
+                    usable_models = [m for m, ok in zip(candidates, results) if ok]
+
                     vision = sorted(
                         [
                             {"id": f"nvidia_nim/{m['id']}", "name": _display_name(m["id"])}
-                            for m in raw
-                            if "vision" in m.get("id", "").lower()
+                            for m in usable_models
                         ],
                         key=lambda x: x["id"],
                     )
