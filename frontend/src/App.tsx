@@ -79,7 +79,6 @@ function App() {
 
   useEffect(() => {
     if (!isProcessing) return
-    setElapsedSeconds(0)
     const start = Date.now()
     const id = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - start) / 1000)), 1000)
     return () => clearInterval(id)
@@ -124,6 +123,7 @@ function App() {
     setIsProcessing(true)
     setResult(null)
     setAnalysisError(null)
+    setElapsedSeconds(0)
 
     try {
       if (needsAuth) {
