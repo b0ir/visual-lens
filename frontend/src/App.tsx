@@ -36,6 +36,12 @@ function getErrorMessage(e: unknown, res?: Response): string {
   return e instanceof Error ? e.message : String(e)
 }
 
+function formatElapsed(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
 function App() {
   const [url, setUrl] = useState('')
   const [needsAuth, setNeedsAuth] = useState(false)
@@ -44,6 +50,7 @@ function App() {
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const [result, setResult] = useState<CrawlResult[] | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [showSettings, setShowSettings] = useState(false)
   const [targetBrowser, setTargetBrowser] = useState('all')
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
@@ -68,6 +75,14 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode)
   }, [isDarkMode])
+
+  useEffect(() => {
+    if (!isProcessing) return
+    setElapsedSeconds(0)
+    const start = Date.now()
+    const id = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - start) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [isProcessing])
 
   const toggleDarkMode = () => {
     const next = !isDarkMode
@@ -286,6 +301,9 @@ function App() {
 
   const aggregatedBugs = getAggregatedBugs()
 
+  const expectedBrowserCount = targetBrowser === 'all' ? 3 : 1
+  const pendingBrowserCount = Math.max(0, expectedBrowserCount - (result ? result.length : 0))
+
   const erroredResults = result ? result.filter(r => r.status === 'error' || r.ai_error) : []
   const errorMessages = erroredResults.map(r => r.error ?? r.ai_error ?? '')
   const allErrorsSame = errorMessages.length > 0 && errorMessages.every(m => m === errorMessages[0])
@@ -369,7 +387,9 @@ function App() {
             <div className="bg-white dark:bg-zinc-900 p-10 rounded-3xl shadow-2xl max-w-md w-full text-center border border-zinc-200 dark:border-zinc-800">
               <Loader2 className="animate-spin w-12 h-12 text-violet-600 dark:text-violet-500 mx-auto mb-6" />
               <h3 className="text-2xl font-bold text-zinc-900 dark:text-white mb-2 tracking-tight">Analyzing...</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 font-medium mb-6">{statusMessage}</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 font-medium mb-1">{statusMessage}</p>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-1">This can take a few minutes, especially when analyzing multiple browser engines.</p>
+              <p className="text-lg font-mono font-bold text-violet-600 dark:text-violet-400 mb-6 tabular-nums">{formatElapsed(elapsedSeconds)}</p>
               <button
                 onClick={handleCancel}
                 className="inline-flex items-center gap-2 mx-auto px-4 py-2 text-sm font-semibold text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded-lg hover:border-rose-400 hover:text-rose-500 dark:hover:border-rose-500 dark:hover:text-rose-400 transition"
@@ -377,6 +397,20 @@ function App() {
                 <X size={15} /> Cancel
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Sticky status chip — shown once results start streaming but other engines are still running */}
+        {isProcessing && result && result.length > 0 && pendingBrowserCount > 0 && (
+          <div className="sticky top-4 z-40 mb-6 flex items-center gap-3 pl-4 pr-5 py-2.5 rounded-full bg-zinc-900/90 dark:bg-violet-950/60 backdrop-blur-md border border-violet-500/30 shadow-lg shadow-violet-900/20 text-white w-fit mx-auto">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-violet-500"></span>
+            </span>
+            <span className="text-sm font-semibold tracking-tight">
+              Still analyzing {pendingBrowserCount} more engine{pendingBrowserCount === 1 ? '' : 's'}…
+            </span>
+            <span className="text-sm font-mono tabular-nums text-violet-300">{formatElapsed(elapsedSeconds)}</span>
           </div>
         )}
 
