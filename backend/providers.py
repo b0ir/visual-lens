@@ -278,6 +278,7 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                 # Free-tier keys are only billable-safe on models carrying the
                 # :free suffix, and OpenRouter rotates that set over time — so
                 # query the live catalog instead of trusting a static list.
+                candidates: list[dict[str, str]] = []
                 vision: list[dict[str, str]] = []
                 models_resp = await client.get("https://openrouter.ai/api/v1/models")
                 if models_resp.status_code == 200:
@@ -288,8 +289,60 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                         if model_id.endswith(":free") != is_free_tier:
                             continue
                         name = m.get("name") or _display_name(model_id.removesuffix(":free"))
-                        vision.append({"id": f"openrouter/{model_id}", "name": name})
-                    vision.sort(key=lambda x: x["id"])
+                        candidates.append({"id": model_id, "name": name})
+
+                    if is_free_tier:
+                        # Only probe with a real (zero-cost) request on the free tier — for
+                        # paid keys this would fire billed inference on every "verify key"
+                        # click across the whole vision catalog, so trust the metadata instead.
+                        sem = asyncio.Semaphore(5)
+
+                        async def _is_usable(model_id_str: str) -> bool:
+                            async with sem:
+                                try:
+                                    probe = await client.post(
+                                        "https://openrouter.ai/api/v1/chat/completions",
+                                        headers={"Authorization": f"Bearer {api_key}"},
+                                        json={
+                                            "model": model_id_str,
+                                            "messages": [
+                                                {
+                                                    "role": "user",
+                                                    "content": [
+                                                        {"type": "text", "text": "hi"},
+                                                        {
+                                                            "type": "image_url",
+                                                            "image_url": {
+                                                                "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                                                            },
+                                                        },
+                                                    ],
+                                                }
+                                            ],
+                                            "max_tokens": 1,
+                                        },
+                                        timeout=5.0,
+                                    )
+                                    # A 429 only reflects our own concurrent probing load, not
+                                    # whether the model itself works — don't penalize it for that.
+                                    if probe.status_code == 429:
+                                        return True
+                                    return probe.status_code == 200
+                                except Exception:
+                                    return True
+
+                        results = await asyncio.gather(*[_is_usable(c["id"]) for c in candidates])
+                        usable_candidates = [c for c, ok in zip(candidates, results) if ok]
+                    else:
+                        usable_candidates = candidates
+
+                    vision = sorted(
+                        [
+                            {"id": f"openrouter/{c['id']}", "name": c["name"]}
+                            for c in usable_candidates
+                        ],
+                        key=lambda x: x["id"],
+                    )
 
                 fallback_key = "free_vision_models" if is_free_tier else "vision_models"
                 return {
@@ -321,17 +374,29 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                                     headers={"Authorization": f"Bearer {api_key}"},
                                     json={
                                         "model": model_id,
-                                        "messages": [{"role": "user", "content": "hi"}],
+                                        "messages": [
+                                            {
+                                                "role": "user",
+                                                "content": [
+                                                    {"type": "text", "text": "hi"},
+                                                    {
+                                                        "type": "image_url",
+                                                        "image_url": {
+                                                            "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                                                        },
+                                                    },
+                                                ],
+                                            }
+                                        ],
                                         "max_tokens": 1,
                                     },
                                     timeout=5.0,
                                 )
-                                # 404 indicates the model endpoint or function is retired/not found for account.
-                                if probe.status_code == 404:
-                                    return False
-                                # Fail open for transient errors (429 rate-limited, 5xx, timeouts)
-                                # to prevent network glitches from falsely excluding valid models.
-                                return True
+                                # A 429 only reflects our own concurrent probing load, not
+                                # whether the model itself works — don't penalize it for that.
+                                if probe.status_code == 429:
+                                    return True
+                                return probe.status_code == 200
                             except Exception:
                                 return True
 

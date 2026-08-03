@@ -9,7 +9,7 @@ An autonomous, AI-powered visual regression and UI testing agent. It crawls web 
 
 - **Multi-browser crawling** — captures pages screenshots in Chromium, Firefox, and WebKit in parallel.
 - **Vision AI analysis** — sends screenshots + simplified DOM to a vision LLM and receives structured bug reports.
-- **Bring your own key** — supports OpenAI, Anthropic, Google Gemini, DeepSeek, xAI, and OpenRouter. Enter your API key, verify it, and pick from available vision models.
+- **Bring your own key** — supports OpenAI, Anthropic, Google Gemini, DeepSeek, xAI, NVIDIA, and OpenRouter. Enter your API key, verify it, and pick from available vision models.
 - **Auth support** — for pages behind login, opens an interactive browser window for manual login before crawling.
 
 ## Architecture
@@ -33,7 +33,8 @@ An autonomous, AI-powered visual regression and UI testing agent. It crawls web 
                                │  Vision LLM (via litellm)│
                                │                          │
                                │  OpenAI · Anthropic      │
-                               │  Gemini · DeepSeek · ... │
+                               │  Gemini · DeepSeek       │
+                               │  xAI · NVIDIA · ...      │
                                └──────────────────────────┘
 ```
 

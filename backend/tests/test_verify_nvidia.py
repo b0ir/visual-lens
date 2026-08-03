@@ -65,3 +65,75 @@ def test_nvidia_invalid_key_returns_error(monkeypatch):
     result = asyncio.run(providers.verify_api_key("nvidia", "nvapi-bad"))
 
     assert result == {"valid": False, "error": "Invalid API key"}
+
+
+def test_nvidia_filters_out_500_and_exception_models(monkeypatch):
+    BROKEN_500_MODEL = {"id": "nvidia/llama-3.1-nemotron-nano-vl-8b-v1"}
+    _patch_client(
+        monkeypatch,
+        models_response=httpx.Response(
+            200, json={"data": [VALID_VISION_MODEL, BROKEN_500_MODEL]}
+        ),
+        probe_responses={
+            "meta/llama-3.2-11b-vision-instruct": httpx.Response(200, json={"choices": []}),
+            "nvidia/llama-3.1-nemotron-nano-vl-8b-v1": httpx.Response(
+                500, json={"detail": "'NVLM_D2_Config' object has no attribute 'vocab_size'"}
+            ),
+        },
+    )
+
+    result = asyncio.run(providers.verify_api_key("nvidia", "nvapi-test"))
+
+    assert result["valid"] is True
+    ids = [m["id"] for m in result["vision_models"]]
+    assert "nvidia_nim/meta/llama-3.2-11b-vision-instruct" in ids
+    assert "nvidia_nim/nvidia/llama-3.1-nemotron-nano-vl-8b-v1" not in ids
+
+
+def test_nvidia_keeps_model_on_rate_limited_probe(monkeypatch):
+    RATE_LIMITED_MODEL = {"id": "nvidia/rate-limited-vision-model"}
+    _patch_client(
+        monkeypatch,
+        models_response=httpx.Response(
+            200, json={"data": [VALID_VISION_MODEL, RATE_LIMITED_MODEL]}
+        ),
+        probe_responses={
+            "meta/llama-3.2-11b-vision-instruct": httpx.Response(200, json={"choices": []}),
+            "nvidia/rate-limited-vision-model": httpx.Response(429, json={"detail": "rate limited"}),
+        },
+    )
+
+    result = asyncio.run(providers.verify_api_key("nvidia", "nvapi-test"))
+
+    assert result["valid"] is True
+    ids = [m["id"] for m in result["vision_models"]]
+    assert "nvidia_nim/meta/llama-3.2-11b-vision-instruct" in ids
+    assert "nvidia_nim/nvidia/rate-limited-vision-model" in ids
+
+
+def test_nvidia_keeps_model_when_probe_raises(monkeypatch):
+    TIMEOUT_MODEL = {"id": "nvidia/timeout-vision-model"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url_str = str(request.url)
+        if url_str == MODELS_URL:
+            return httpx.Response(200, json={"data": [TIMEOUT_MODEL]})
+        if url_str == CHAT_URL:
+            raise httpx.TimeoutException("probe timed out")
+        raise AssertionError(f"unexpected request to {request.url}")
+
+    transport = httpx.MockTransport(handler)
+    real_async_client = httpx.AsyncClient
+
+    def factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_async_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", factory)
+
+    result = asyncio.run(providers.verify_api_key("nvidia", "nvapi-test"))
+
+    assert result["valid"] is True
+    ids = [m["id"] for m in result["vision_models"]]
+    assert "nvidia_nim/nvidia/timeout-vision-model" in ids
+

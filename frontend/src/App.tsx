@@ -7,6 +7,7 @@ interface BugReport {
   description: string
   suggested_solution: string
   element_selector: string
+  category?: string
   screenshot_crop?: string
 }
 
@@ -36,6 +37,12 @@ function getErrorMessage(e: unknown, res?: Response): string {
   return e instanceof Error ? e.message : String(e)
 }
 
+function formatElapsed(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
 function App() {
   const [url, setUrl] = useState('')
   const [needsAuth, setNeedsAuth] = useState(false)
@@ -44,6 +51,7 @@ function App() {
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const [result, setResult] = useState<CrawlResult[] | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [showSettings, setShowSettings] = useState(false)
   const [targetBrowser, setTargetBrowser] = useState('all')
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
@@ -68,6 +76,13 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode)
   }, [isDarkMode])
+
+  useEffect(() => {
+    if (!isProcessing) return
+    const start = Date.now()
+    const id = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - start) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [isProcessing])
 
   const toggleDarkMode = () => {
     const next = !isDarkMode
@@ -108,6 +123,7 @@ function App() {
     setIsProcessing(true)
     setResult(null)
     setAnalysisError(null)
+    setElapsedSeconds(0)
 
     try {
       if (needsAuth) {
@@ -191,100 +207,148 @@ function App() {
     }
   }
 
-  const SYMPTOM_KEYWORDS = ['hidden', 'clipped', 'overlapping', 'misaligned', 'collapsed', 'low-contrast', 'image-broken'] as const
-
-  // Map free-form symptom phrases to canonical keywords before any comparison.
-  const SYMPTOM_SYNONYMS: [RegExp, string][] = [
-    [/\bnot (fully |partially )?(visible|shown|displayed|rendered)\b/g, 'clipped'],
-    [/\b(partially |partly )?(cut off|truncated|overflow(?:ing)?|clips?)\b/g, 'clipped'],
-    [/\b(not visible|invisible|not shown|disappears?)\b/g, 'hidden'],
-    [/\b(overlaps?|covers?|obscures?|on top of)\b/g, 'overlapping'],
-    [/\b(misaligned|mis-aligned|out of (place|alignment)|off-?center|offset)\b/g, 'misaligned'],
-    [/\b(collapsed|broken layout|zero height|zero width)\b/g, 'collapsed'],
-    [/\b(low contrast|poor contrast|insufficient contrast)\b/g, 'low-contrast'],
-    [/\b(broken image|missing image|image (not |fails? to )load)\b/g, 'image-broken'],
-  ]
-
-  // Generic selectors that are too broad to use as a dedup anchor.
+  // Generic selectors that are too broad to use as a dedup anchor alone.
   const GENERIC_SELECTORS = new Set(['div', 'span', 'p', 'section', 'article', 'main', 'header', 'footer', 'body', 'html', 'ul', 'li', 'nav'])
 
-  const normalizeDesc = (s: string) => {
-    let n = s.toLowerCase().trim().replace(/^(the|a|an)\s+/, '').replace(/[.!?,]+$/, '')
-    for (const [pattern, replacement] of SYMPTOM_SYNONYMS) {
-      n = n.replace(pattern, replacement)
-    }
-    return n
+  const STOP_WORDS = new Set([
+    'the', 'a', 'an', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+    'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'has', 'have',
+    'had', 'do', 'does', 'did', 'some', 'this', 'that', 'these', 'those', 'it', 'its'
+  ])
+
+  const extractTokens = (s: string): string[] =>
+    s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w))
+
+  const extractBaseSelector = (selector: string): string => {
+    const s = selector.trim().toLowerCase()
+    const tokens = s.split(/\s+/)
+    const base = tokens.find(t => t.startsWith('.') || t.startsWith('#') || t.includes(':nth-') || t.includes('[')) || tokens[0]
+    return base || s
   }
 
-  const extractSymptom = (desc: string): string => {
-    const lower = desc.toLowerCase()
-    return SYMPTOM_KEYWORDS.find(k => lower.includes(k)) ?? ''
-  }
-
-  const jaccardSimilarity = (a: string, b: string): number => {
-    const sa = new Set(a.split(/\s+/).filter(Boolean))
-    const sb = new Set(b.split(/\s+/).filter(Boolean))
+  const jaccardTokenSimilarity = (a: string, b: string): number => {
+    const ta = new Set(extractTokens(a))
+    const tb = new Set(extractTokens(b))
+    if (ta.size === 0 || tb.size === 0) return 0
     let intersection = 0
-    sa.forEach(w => { if (sb.has(w)) intersection++ })
-    const union = new Set([...sa, ...sb]).size
-    return union === 0 ? 1 : intersection / union
+    ta.forEach(w => { if (tb.has(w)) intersection++ })
+    const union = new Set([...ta, ...tb]).size
+    return union === 0 ? 0 : intersection / union
   }
 
-  const DEDUP_THRESHOLD = 0.65
+  const hasSharedSubjectPhrase = (a: string, b: string): boolean => {
+    const na = a.toLowerCase()
+    const nb = b.toLowerCase()
+    const phrases = [
+      'shipping cost',
+      'product grid',
+      'navigation bar',
+      'campaign popup',
+      'currency symbol',
+      'product description',
+      'product card',
+      'video overlay',
+      'header logo',
+      'search input',
+      'search bar',
+      'call to action',
+      'footer link',
+      'modal dialog',
+      'dropdown menu',
+      'error message',
+      'loading spinner',
+      'menu item',
+      'login form',
+      'submit button',
+    ]
+    return phrases.some(p => na.includes(p) && nb.includes(p))
+  }
 
-  type BugEntry = { desc: string; solution: string; element: string; browsers: string[]; screenshot?: string }
+  type BugEntry = { desc: string; solution: string; element: string; category: string; browsers: string[]; screenshot?: string }
 
   const getAggregatedBugs = (): BugEntry[] => {
     if (!result) return []
 
-    // Primary index: "element_selector::symptom" — deterministic, DOM-based.
-    const bySelector: Record<string, BugEntry> = {}
-    // Fallback index: normalized description — for generic/ambiguous selectors.
-    const byDesc: Record<string, BugEntry> = {}
+    const aggregated: BugEntry[] = []
 
     result.forEach((res) => {
       if (!res.ai_report || !Array.isArray(res.ai_report)) return
       res.ai_report.forEach((bug) => {
-        const selector = bug.element_selector.toLowerCase().trim()
-        const symptom = extractSymptom(bug.description)
-        const selectorKey = !GENERIC_SELECTORS.has(selector) && selector.length > 2 && symptom
-          ? `${selector}::${symptom}`
-          : null
-        const descKey = normalizeDesc(bug.description)
+        const rawSelector = bug.element_selector.trim()
+        const selector = rawSelector.toLowerCase()
+        const baseSel = extractBaseSelector(rawSelector)
+        const desc = bug.description.trim()
+        const category = bug.category ?? 'other'
 
-        // 1. Try primary key: same element + same symptom type = same bug.
-        if (selectorKey && bySelector[selectorKey]) {
-          if (!bySelector[selectorKey].browsers.includes(res.browser))
-            bySelector[selectorKey].browsers.push(res.browser)
-          return
-        }
+        // Try to match against existing aggregated bugs
+        const existing = aggregated.find((item) => {
+          // Do not merge bugs with different explicit categories
+          if (category !== 'other' && item.category !== 'other' && category !== item.category) {
+            return false
+          }
 
-        // 2. Try fallback: description similarity (catches generic selectors).
-        const existingDescKey = Object.keys(byDesc).find(k => jaccardSimilarity(k, descKey) >= DEDUP_THRESHOLD)
-        if (existingDescKey) {
-          if (!byDesc[existingDescKey].browsers.includes(res.browser))
-            byDesc[existingDescKey].browsers.push(res.browser)
-          if (selectorKey) bySelector[selectorKey] = byDesc[existingDescKey]
-          return
-        }
+          const itemSel = item.element.toLowerCase().trim()
+          const itemBase = extractBaseSelector(item.element)
 
-        // 3. New unique bug.
-        const entry: BugEntry = {
-          desc: bug.description,
-          solution: bug.suggested_solution,
-          element: bug.element_selector,
-          browsers: [res.browser],
-          screenshot: bug.screenshot_crop ? `${API_BASE}/${bug.screenshot_crop}` : undefined,
+          // 1. Exact selector match
+          if (selector === itemSel) return true
+
+          // 2. Base selector match + token overlap or key phrase match or non-generic base
+          const isNonGenericBase = !GENERIC_SELECTORS.has(itemBase) && itemBase.length > 2
+          if (baseSel === itemBase && isNonGenericBase) {
+            const sim = jaccardTokenSimilarity(desc, item.desc)
+            if (sim >= 0.2 || hasSharedSubjectPhrase(desc, item.desc)) return true
+          }
+
+          // 3. Header/Navbar component alias match
+          const isHeaderA = selector.includes('header') || selector.includes('navbar') || selector.includes('nav')
+          const isHeaderB = itemSel.includes('header') || itemSel.includes('navbar') || itemSel.includes('nav')
+          if (isHeaderA && isHeaderB && (hasSharedSubjectPhrase(desc, item.desc) || jaccardTokenSimilarity(desc, item.desc) >= 0.25)) {
+            return true
+          }
+
+          // 4. Description similarity & key phrase match regardless of selector
+          if (hasSharedSubjectPhrase(desc, item.desc) && jaccardTokenSimilarity(desc, item.desc) >= 0.25) {
+            return true
+          }
+
+          if (jaccardTokenSimilarity(desc, item.desc) >= 0.4) {
+            return true
+          }
+
+          return false
+        })
+
+        if (existing) {
+          if (!existing.browsers.includes(res.browser)) {
+            existing.browsers.push(res.browser)
+          }
+          if (!existing.screenshot && bug.screenshot_crop) {
+            existing.screenshot = `${API_BASE}/${bug.screenshot_crop}`
+          }
+          if (desc.length > existing.desc.length + 10) {
+            existing.desc = desc
+          }
+        } else {
+          aggregated.push({
+            desc,
+            solution: bug.suggested_solution,
+            element: rawSelector,
+            category,
+            browsers: [res.browser],
+            screenshot: bug.screenshot_crop ? `${API_BASE}/${bug.screenshot_crop}` : undefined,
+          })
         }
-        if (selectorKey) bySelector[selectorKey] = entry
-        byDesc[descKey] = entry
       })
     })
 
-    return Object.values(byDesc)
+    return aggregated
   }
 
   const aggregatedBugs = getAggregatedBugs()
+
+  const expectedBrowserCount = targetBrowser === 'all' ? 3 : 1
+  const pendingBrowserCount = Math.max(0, expectedBrowserCount - (result ? result.length : 0))
 
   const erroredResults = result ? result.filter(r => r.status === 'error' || r.ai_error) : []
   const errorMessages = erroredResults.map(r => r.error ?? r.ai_error ?? '')
@@ -368,8 +432,9 @@ function App() {
           <div className="fixed inset-0 bg-zinc-900/60 dark:bg-black/80 backdrop-blur-md flex items-center justify-center z-50">
             <div className="bg-white dark:bg-zinc-900 p-10 rounded-3xl shadow-2xl max-w-md w-full text-center border border-zinc-200 dark:border-zinc-800">
               <Loader2 className="animate-spin w-12 h-12 text-violet-600 dark:text-violet-500 mx-auto mb-6" />
-              <h3 className="text-2xl font-bold text-zinc-900 dark:text-white mb-2 tracking-tight">Analyzing...</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 font-medium mb-6">{statusMessage}</p>
+              <h3 className="text-2xl font-bold text-zinc-900 dark:text-white mb-2 tracking-tight">{statusMessage || 'Starting browsers...'}</h3>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-6">This process can take a few minutes.</p>
+              <p className="text-lg font-mono font-bold text-violet-600 dark:text-violet-400 mb-6 tabular-nums">{formatElapsed(elapsedSeconds)}</p>
               <button
                 onClick={handleCancel}
                 className="inline-flex items-center gap-2 mx-auto px-4 py-2 text-sm font-semibold text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded-lg hover:border-rose-400 hover:text-rose-500 dark:hover:border-rose-500 dark:hover:text-rose-400 transition"
@@ -377,6 +442,20 @@ function App() {
                 <X size={15} /> Cancel
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Sticky status chip — shown once results start streaming but other engines are still running */}
+        {isProcessing && result && result.length > 0 && pendingBrowserCount > 0 && (
+          <div className="sticky top-4 z-40 mb-6 flex items-center gap-3 pl-4 pr-5 py-2.5 rounded-full bg-zinc-900/90 dark:bg-violet-950/60 backdrop-blur-md border border-violet-500/30 shadow-lg shadow-violet-900/20 text-white w-fit mx-auto">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-violet-500"></span>
+            </span>
+            <span className="text-sm font-semibold tracking-tight">
+              Analyzing... this process can take a few minutes
+            </span>
+            <span className="text-sm font-mono tabular-nums text-violet-300">{formatElapsed(elapsedSeconds)}</span>
           </div>
         )}
 
@@ -405,7 +484,12 @@ function App() {
                   {aggregatedBugs.map((bug, idx) => (
                     <div key={idx} className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-violet-100 dark:border-zinc-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
                       <div className="flex-grow">
-                        <p className="text-lg font-bold text-zinc-900 dark:text-white mb-2">{bug.desc}</p>
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <span className="px-2.5 py-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-xs font-bold rounded-full capitalize border border-violet-200 dark:border-violet-800/50">
+                            {bug.category}
+                          </span>
+                          <p className="text-lg font-bold text-zinc-900 dark:text-white">{bug.desc}</p>
+                        </div>
                         <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 mb-3">
                           <Code size={16} /> <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md">{bug.element}</span>
                         </div>
