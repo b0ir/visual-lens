@@ -251,6 +251,15 @@ function App() {
       'header logo',
       'search input',
       'search bar',
+      'call to action',
+      'footer link',
+      'modal dialog',
+      'dropdown menu',
+      'error message',
+      'loading spinner',
+      'menu item',
+      'login form',
+      'submit button',
     ]
     return phrases.some(p => na.includes(p) && nb.includes(p))
   }

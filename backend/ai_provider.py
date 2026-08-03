@@ -241,4 +241,4 @@ async def analyze_ui(image_path: str, dom_html: str, model_name: str, api_key: s
                 detail = ": Provider server error (500)"
             raise Exception(f"AI provider returned an error{detail}. Please try selecting a different vision model in Settings.")
 
-        raise Exception(f"AI API request failed: {error_msg}")
+        raise Exception("AI API request failed. See backend logs for details.")

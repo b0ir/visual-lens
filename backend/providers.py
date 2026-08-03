@@ -291,42 +291,50 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                         name = m.get("name") or _display_name(model_id.removesuffix(":free"))
                         candidates.append({"id": model_id, "name": name})
 
-                    sem = asyncio.Semaphore(5)
+                    if is_free_tier:
+                        # Only probe with a real (zero-cost) request on the free tier — for
+                        # paid keys this would fire billed inference on every "verify key"
+                        # click across the whole vision catalog, so trust the metadata instead.
+                        sem = asyncio.Semaphore(5)
 
-                    async def _is_usable(model_id_str: str) -> bool:
-                        async with sem:
-                            try:
-                                probe = await client.post(
-                                    "https://openrouter.ai/api/v1/chat/completions",
-                                    headers={"Authorization": f"Bearer {api_key}"},
-                                    json={
-                                        "model": model_id_str,
-                                        "messages": [
-                                            {
-                                                "role": "user",
-                                                "content": [
-                                                    {"type": "text", "text": "hi"},
-                                                    {
-                                                        "type": "image_url",
-                                                        "image_url": {
-                                                            "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                        async def _is_usable(model_id_str: str) -> bool:
+                            async with sem:
+                                try:
+                                    probe = await client.post(
+                                        "https://openrouter.ai/api/v1/chat/completions",
+                                        headers={"Authorization": f"Bearer {api_key}"},
+                                        json={
+                                            "model": model_id_str,
+                                            "messages": [
+                                                {
+                                                    "role": "user",
+                                                    "content": [
+                                                        {"type": "text", "text": "hi"},
+                                                        {
+                                                            "type": "image_url",
+                                                            "image_url": {
+                                                                "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                                                            },
                                                         },
-                                                    },
-                                                ],
-                                            }
-                                        ],
-                                        "max_tokens": 1,
-                                    },
-                                    timeout=5.0,
-                                )
-                                if probe.status_code != 200:
-                                    return False
-                                return True
-                            except Exception:
-                                return False
+                                                    ],
+                                                }
+                                            ],
+                                            "max_tokens": 1,
+                                        },
+                                        timeout=5.0,
+                                    )
+                                    # A 429 only reflects our own concurrent probing load, not
+                                    # whether the model itself works — don't penalize it for that.
+                                    if probe.status_code == 429:
+                                        return True
+                                    return probe.status_code == 200
+                                except Exception:
+                                    return True
 
-                    results = await asyncio.gather(*[_is_usable(c["id"]) for c in candidates])
-                    usable_candidates = [c for c, ok in zip(candidates, results) if ok]
+                        results = await asyncio.gather(*[_is_usable(c["id"]) for c in candidates])
+                        usable_candidates = [c for c, ok in zip(candidates, results) if ok]
+                    else:
+                        usable_candidates = candidates
 
                     vision = sorted(
                         [
@@ -384,12 +392,13 @@ async def verify_api_key(provider_id: str, api_key: str) -> dict:
                                     },
                                     timeout=5.0,
                                 )
-                                # Only 200 OK vision probes are considered usable models
-                                if probe.status_code != 200:
-                                    return False
-                                return True
+                                # A 429 only reflects our own concurrent probing load, not
+                                # whether the model itself works — don't penalize it for that.
+                                if probe.status_code == 429:
+                                    return True
+                                return probe.status_code == 200
                             except Exception:
-                                return False
+                                return True
 
                     results = await asyncio.gather(*[_is_usable(m) for m in candidates])
                     usable_models = [m for m, ok in zip(candidates, results) if ok]

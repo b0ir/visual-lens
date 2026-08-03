@@ -157,7 +157,6 @@ async def _crawl_single_browser(
                 ai_error = str(ai_exc)
 
         _CROP_PADDING = 30
-        valid_report: list[dict[str, Any]] = []
 
         # Expand page viewport to cover full document dimensions so clip regions at any scroll depth remain inside viewport bounds
         try:
@@ -170,7 +169,6 @@ async def _crawl_single_browser(
             logger.debug("Failed to expand viewport size before crop capture: %s", vp_exc)
 
         for idx, bug in enumerate(ai_report):
-            valid_report.append(bug)
             selector = (bug.get("element_selector") or "").strip()
             if not selector:
                 continue
@@ -209,8 +207,6 @@ async def _crawl_single_browser(
                     logger.warning("Crop screenshot capture failed for selector %r: %s", selector, e)
             elif bug.get("category") == "hidden":
                 logger.debug("No bounding box for selector %r — expected for a 'hidden' bug", selector)
-
-        ai_report = valid_report
 
         await context.close()
         await browser.close()
