@@ -4,7 +4,7 @@ version = "1.0.0"
 requires-python = ">=3.14"
 dependencies = [
   "fastapi>=0.140.13,<1.0",
-  "uvicorn[standard]>=0.52.0,<1.0",
+  "uvicorn[standard]>=0.52.1,<1.0",
   "playwright>=1.62.0,<2.0",
   "python-dotenv>=1.0.1,<2.0",
   # Exact-pinned: litellm 1.83.7 is the newest release with Python 3.14 wheel
