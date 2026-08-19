@@ -12,7 +12,7 @@ dependencies = [
   # sdist requiring a Rust toolchain to build on 3.14). litellm also
   # exact-pins its own dependency tree (pydantic, python-dotenv, httpx,
   # aiohttp, openai, jinja2) — see the dependabot ignore list below.
-  "litellm==1.83.7",
+  "litellm==1.97.0",
   "pydantic>=2.12.5,<3.0",
   "httpx>=0.28.1,<1.0",
 ]
