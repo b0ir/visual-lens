@@ -6,7 +6,7 @@ dependencies = [
   "fastapi>=0.141.1,<1.0",
   "uvicorn[standard]>=0.53.0,<1.0",
   "playwright>=1.62.0,<2.0",
-  "python-dotenv>=1.0.1,<2.0",
+  "python-dotenv>=1.2.3,<2.0",
   # Exact-pinned: litellm 1.100.1 ships prebuilt wheels for Python 3.14
   # (cp310-abi3, requires-python <3.15,>=3.10). Unlike 1.83.7, it no longer
   # exact-pins its own dependency tree (pydantic/httpx/python-dotenv/etc.
