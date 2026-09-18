@@ -12,7 +12,7 @@ dependencies = [
   # exact-pins its own dependency tree (pydantic/httpx/python-dotenv/etc.
   # are plain ranges), so the dependabot ignore list for those packages
   # has been removed — see .github/dependabot.yml.
-  "litellm==1.100.1",
+  "litellm==1.101.0",
   "pydantic>=2.12.5,<3.0",
   "httpx>=0.28.1,<1.0",
 ]
