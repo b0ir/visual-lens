@@ -7,12 +7,12 @@ dependencies = [
   "uvicorn[standard]>=0.53.0,<1.0",
   "playwright>=1.62.0,<2.0",
   "python-dotenv>=1.0.1,<2.0",
-  # Exact-pinned: litellm 1.83.7 is the newest release with Python 3.14 wheel
-  # support (1.92.0+ declares Requires-Python <3.14 and only ships as an
-  # sdist requiring a Rust toolchain to build on 3.14). litellm also
-  # exact-pins its own dependency tree (pydantic, python-dotenv, httpx,
-  # aiohttp, openai, jinja2) — see the dependabot ignore list below.
-  "litellm==1.83.7",
+  # Exact-pinned: litellm 1.100.1 ships prebuilt wheels for Python 3.14
+  # (cp310-abi3, requires-python <3.15,>=3.10). Unlike 1.83.7, it no longer
+  # exact-pins its own dependency tree (pydantic/httpx/python-dotenv/etc.
+  # are plain ranges), so the dependabot ignore list for those packages
+  # has been removed — see .github/dependabot.yml.
+  "litellm==1.100.1",
   "pydantic>=2.12.5,<3.0",
   "httpx>=0.28.1,<1.0",
 ]
