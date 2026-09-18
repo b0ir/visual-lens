@@ -11,14 +11,6 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    ignore:
-      # litellm is exact-pinned in pyproject.toml (see the comment there) and
-      # exact-pins these packages itself. Bumping their floors independently
-      # causes ResolutionImpossible. Let litellm control these versions;
-      # update them only when litellm updates.
-      - dependency-name: pydantic
-      - dependency-name: python-dotenv
-      - dependency-name: httpx
 
   - package-ecosystem: github-actions
     directory: /
