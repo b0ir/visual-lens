@@ -67,7 +67,14 @@ yourself — the backend is managed with [`uv`](https://docs.astral.sh/uv/), whi
 `setup:backend` installs automatically if it's missing, and which then downloads the
 pinned Python 3.14 interpreter itself. There is nothing Python-related to install by hand.
 
-### 1. Setup
+### 1. Clone this repo
+
+```bash
+git clone https://github.com/b0ir/visual-lens.git
+cd visual-lens
+```
+
+### 2. Setup
 
 ```bash
 npm run setup:all
@@ -77,7 +84,7 @@ Installs Node dependencies, installs `uv` if needed, lets `uv` fetch Python 3.14
 create `backend/.venv`, installs backend dependencies from `backend/pyproject.toml` /
 `backend/uv.lock`, and downloads Playwright browsers.
 
-### 2. Run
+### 3. Run
 
 ```bash
 npm run dev
@@ -86,7 +93,7 @@ npm run dev
 - **Frontend:** `http://localhost:3000`
 - **Backend API:** `http://localhost:8000`
 
-### 3. Configure
+### 4. Configure
 
 Open Settings in the UI, select your AI provider, paste your API key, verify it, and choose a vision model.
 
